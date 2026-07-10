@@ -1,0 +1,27 @@
+[Unit]
+Description=Pulse Bot - Telegram fragment capture for Obsidian vault
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pulse-bot
+Group=pulse-bot
+WorkingDirectory=/opt/pulse-bot/vault
+Environment="PYTHONPATH=/opt/pulse-bot/app"
+EnvironmentFile=/opt/pulse-bot/.env
+ExecStart=/opt/pulse-bot/.venv/bin/python -m pulse_bot.bot
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/pulse-bot/vault
+
+[Install]
+WantedBy=multi-user.target
