@@ -23,3 +23,45 @@ def make_slug(text: str) -> str:
     # Truncate
     text = text[:SLUG_MAX_LEN].rstrip("-")
     return text if text else SLUG_FALLBACK
+
+def build_card_path(text: str, when: datetime) -> Path:
+    """Build full path for a Pulse Card: 00_Inbox/_pulse/<timestamp>_<slug>.md."""
+    ts = when.strftime("%Y-%m-%d_%H%M%S")
+    slug = make_slug(text)
+    filename = f"{ts}_{slug}.md"
+    return Path("00_Inbox/_pulse") / filename
+
+
+def render_card(text: str, user_id: int, intent: str, when: datetime) -> str:
+    """Render full Pulse Card markdown content."""
+    ts_iso = when.strftime("%Y-%m-%dT%H:%M:%SZ")
+    ts_human = when.strftime("%Y-%m-%d %H:%M")
+    first_line = text.strip().split("\n")[0][:80]
+    safe_first_line = first_line.replace('"', '\\"')
+
+    frontmatter = f"""---
+tags:
+  - pulse
+  - inbox
+created: {ts_iso}
+updated: {ts_iso}
+source: "telegram:{user_id}"
+status: pulse
+raw_text: |
+  {text}
+intent: {intent}
+captured_at: {ts_iso}
+---
+
+## {safe_first_line}
+
+> 这是 {ts_human} 通过 Telegram 捕获的碎片想法。
+> 尚未规范化。处理时调用 vault-enhance 或手动编辑。
+
+### 原始消息
+{text}
+
+### 后续处理
+<!-- 在这里由人或 agent 补：tags、链接、关联计划等 -->
+"""
+    return frontmatter
