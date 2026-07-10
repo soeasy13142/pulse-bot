@@ -71,3 +71,81 @@ def test_commit_and_push_retries_on_failure(tmp_git_repo, monkeypatch):
     result = sync.commit_and_push(new_file, message="pulse: idea 3")
     assert result is False
     assert len(push_attempts) == 2
+
+
+def test_commit_and_push_file_not_exists(tmp_git_repo):
+    """Non-existent file → returns False without git operations."""
+    sync = GitSync(repo_dir=tmp_git_repo, remote_name="origin", branch="master")
+    nonexistent = tmp_git_repo / "does_not_exist.md"
+    result = sync.commit_and_push(nonexistent, message="pulse: ghost")
+    assert result is False
+
+
+def test_commit_and_push_add_fails(tmp_git_repo, monkeypatch):
+    """If git add fails, return False."""
+    sync = GitSync(repo_dir=tmp_git_repo, remote_name="origin", branch="master", dry_run=False)
+    real_run = subprocess.run
+
+    def fake_run(*args, **kwargs):
+        command = args[0]
+        if command[:2] == ["git", "add"]:
+            class Result:
+                returncode = 1
+                stderr = "fatal: cannot add"
+                stdout = ""
+            return Result()
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    new_file = tmp_git_repo / "idea4.md"
+    new_file.write_text("idea 4")
+    result = sync.commit_and_push(new_file, message="pulse: idea 4")
+    assert result is False
+
+
+def test_commit_and_push_commit_fails(tmp_git_repo, monkeypatch):
+    """If git commit fails, return False."""
+    sync = GitSync(repo_dir=tmp_git_repo, remote_name="origin", branch="master", dry_run=False)
+    real_run = subprocess.run
+
+    def fake_run(*args, **kwargs):
+        command = args[0]
+        if command[:2] == ["git", "commit"]:
+            class Result:
+                returncode = 1
+                stderr = "fatal: cannot commit"
+                stdout = ""
+            return Result()
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    new_file = tmp_git_repo / "idea5.md"
+    new_file.write_text("idea 5")
+    result = sync.commit_and_push(new_file, message="pulse: idea 5")
+    assert result is False
+
+
+def test_commit_and_push_push_succeeds_on_retry(tmp_git_repo, monkeypatch):
+    """Push fails first attempt, succeeds on second — return True."""
+    sync = GitSync(repo_dir=tmp_git_repo, remote_name="origin", branch="master", retries=3)
+    real_run = subprocess.run
+    push_attempts = []
+
+    def fake_run(*args, **kwargs):
+        command = args[0]
+        if command[:2] == ["git", "push"]:
+            push_attempts.append(command)
+            class Result:
+                returncode = 0 if len(push_attempts) >= 2 else 1
+                stderr = ""
+                stdout = ""
+            return Result()
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    new_file = tmp_git_repo / "idea6.md"
+    new_file.write_text("idea 6")
+    result = sync.commit_and_push(new_file, message="pulse: idea 6")
+    assert result is True
+    assert len(push_attempts) == 2

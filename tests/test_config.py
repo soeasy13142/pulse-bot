@@ -1,0 +1,97 @@
+"""Tests for pulse_bot.config module."""
+import os
+from pathlib import Path
+import pytest
+from pulse_bot.config import load_config
+
+
+@pytest.fixture
+def env_setup(monkeypatch):
+    """Set up env vars for config tests."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-123")
+    monkeypatch.setenv("VAULT_REPO_DIR", "/tmp/test-vault")
+    monkeypatch.setenv("GIT_REMOTE", "test-origin")
+    monkeypatch.setenv("GIT_BRANCH", "test-branch")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+
+
+@pytest.fixture
+def minimal_yaml(tmp_path):
+    """YAML with only allowed_user_ids (other fields from env)."""
+    yaml_file = tmp_path / "minimal.yaml"
+    yaml_file.write_text("allowed_user_ids:\n  - 999\n")
+    return yaml_file
+
+
+@pytest.fixture
+def yaml_config(tmp_path):
+    """Create a YAML config file for testing."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "telegram_token: yaml-token\n"
+        "allowed_user_ids:\n"
+        "  - 100\n"
+        "  - 200\n"
+        "vault_repo_dir: /yaml/path\n"
+    )
+    return config_file
+
+
+def test_load_config_from_env_plus_minimal_yaml(env_setup, minimal_yaml):
+    """Most config from env vars; only allowed_user_ids from YAML (required field)."""
+    config = load_config(path=minimal_yaml)
+    assert config["telegram_token"] == "test-token-123"
+    assert config["vault_repo_dir"] == Path("/tmp/test-vault")
+    assert config["git_remote"] == "test-origin"
+    assert config["git_branch"] == "test-branch"
+    assert config["log_level"] == "DEBUG"
+    assert config["allowed_user_ids"] == [999]
+
+
+def test_load_config_vault_repo_dir_is_path(env_setup, minimal_yaml):
+    """vault_repo_dir should always be a Path instance."""
+    config = load_config(path=minimal_yaml)
+    assert isinstance(config["vault_repo_dir"], Path)
+
+
+def test_load_config_yaml_overrides_env(env_setup, yaml_config):
+    """YAML values should override env vars."""
+    config = load_config(path=yaml_config)
+    # YAML telegram_token wins over env (YAML is higher priority)
+    assert config["telegram_token"] == "yaml-token"
+    assert config["allowed_user_ids"] == [100, 200]
+    # vault_repo_dir from YAML, wrapped as Path
+    assert config["vault_repo_dir"] == Path("/yaml/path")
+    assert isinstance(config["vault_repo_dir"], Path)
+
+
+def test_load_config_missing_token_raises(monkeypatch):
+    """No telegram_token anywhere → ValueError."""
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("VAULT_REPO_DIR", "/tmp")
+    with pytest.raises(ValueError, match="TELEGRAM_BOT_TOKEN"):
+        load_config(path="/nonexistent/path.yaml")
+
+
+def test_load_config_empty_yaml_file(tmp_path, env_setup):
+    """Empty YAML file should be handled gracefully (not crash) — but still needs allowed_user_ids."""
+    empty_yaml = tmp_path / "empty.yaml"
+    empty_yaml.write_text("")
+    with pytest.raises(ValueError, match="allowed_user_ids"):
+        load_config(path=empty_yaml)
+    # Confirms empty YAML is treated as no YAML, so missing allowed_user_ids still raises
+
+
+def test_load_config_accepts_str_path(env_setup, yaml_config):
+    """load_config should accept str path (defensive conversion)."""
+    config = load_config(path=str(yaml_config))
+    assert config["telegram_token"] == "yaml-token"
+
+
+def test_load_config_pulses_bot_config_env(monkeypatch, yaml_config):
+    """PULSE_BOT_CONFIG env var should be honored when path arg is None."""
+    monkeypatch.setenv("PULSE_BOT_CONFIG", str(yaml_config))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "env-token")
+    config = load_config()
+    # YAML overrides env for telegram_token (per design)
+    assert config["telegram_token"] == "yaml-token"
