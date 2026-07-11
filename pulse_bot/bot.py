@@ -2,8 +2,10 @@
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from telegram import Update
 from telegram.ext import (
@@ -204,6 +206,62 @@ def _flush_dead_letters(sync: GitSync, dl: DeadLetterQueue) -> int:
     return dl.flush(sync)
 
 
+class AlertTrigger:
+    """Checks DLQ size and sends a Telegram alert when over threshold.
+
+    Cooldown is tracked in-memory; acceptable because bot restart resets it
+    and startup will re-alert if the DLQ is still over threshold.
+    """
+
+    def __init__(
+        self,
+        dlq: "DeadLetterQueue",
+        send_message: Callable[[str], Awaitable[None]],
+        threshold: int = 5,
+        cooldown: float = 3600.0,
+    ) -> None:
+        self._dlq = dlq
+        self._send = send_message
+        self._threshold = threshold
+        self._cooldown = cooldown
+        self._last_alert_at: float = 0.0
+
+    async def check(self) -> None:
+        count = self._dlq.length() if hasattr(self._dlq, "length") else self._count_lines()
+        if count < self._threshold:
+            return
+        now = time.time()
+        if now - self._last_alert_at < self._cooldown:
+            return
+        self._last_alert_at = now
+        try:
+            msg = self._format_alert(count)
+            await self._send(msg)
+        except Exception:
+            logger.exception("failed to send DLQ alert")
+
+    def _count_lines(self) -> int:
+        try:
+            with open(self._dlq.path) as f:
+                return sum(1 for _ in f)
+        except FileNotFoundError:
+            return 0
+
+    def _format_alert(self, count: int) -> str:
+        recent = self._dlq.tail(5) if hasattr(self._dlq, "tail") else []
+        lines = [
+            "⚠ Dead-letter queue alert",
+            f"File: {self._dlq.path}",
+            f"Entries: {count}",
+        ]
+        if recent:
+            lines.append("Recent errors:")
+            for entry in recent:
+                lines.append(f"  - {entry.get('error', '?')}")
+        lines.append("Inspect: sudo tail -20 " + str(self._dlq.path))
+        return "\n".join(lines)
+
+
 async def main() -> None:
     """Entry point."""
     config = load_config()
@@ -229,6 +287,22 @@ async def main() -> None:
             logger.info("Startup: flushed %d dead letter(s)", flushed)
     except Exception:
         logger.exception("Startup dead letter flush failed (non-fatal)")
+
+    # AlertTrigger: DLQ monitoring and notification
+    dlq = _get_dead_letter(config)
+
+    async def _send_to_owner(text: str) -> None:
+        owner = config["allowed_user_ids"][0]
+        await application.bot.send_message(chat_id=owner, text=text)
+
+    trigger = AlertTrigger(
+        dlq=dlq,
+        send_message=_send_to_owner,
+        threshold=config.get("dlq_alert_threshold", 5),
+        cooldown=float(config.get("dlq_alert_cooldown", 3600)),
+    )
+    dlq._on_new_entry = lambda: asyncio.create_task(trigger.check())
+    await trigger.check()  # startup check
 
     application = Application.builder().token(config["telegram_token"]).build()
     application.bot_data["coordinator"] = coord

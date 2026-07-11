@@ -64,6 +64,29 @@ class DeadLetterQueue:
             except Exception:
                 logger.exception("dead_letter on_new_entry callback failed")
 
+    def length(self) -> int:
+        """Return the number of entries on disk by counting JSONL lines.
+
+        Uses file I/O so it reflects what a concurrent process may have written;
+        use ``.count`` for the in-memory count.
+        """
+        try:
+            with open(self.path) as f:
+                return sum(1 for _ in f)
+        except FileNotFoundError:
+            return 0
+
+    def tail(self, n: int) -> list[dict]:
+        """Return the last *n* entries from disk without touching in-memory state."""
+        import json
+
+        try:
+            with open(self.path) as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            return []
+        return [json.loads(line) for line in lines[-n:]]
+
     def flush(self, git_sync) -> int:
         """Retry all entries via git_sync. Returns number of successfully flushed."""
         if not self._entries:
