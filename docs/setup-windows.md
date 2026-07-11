@@ -42,6 +42,8 @@ pulse-pull: success
 
 ### 3. 安装 Task Scheduler 定时任务
 
+**方法 A：用脚本一键安装（推荐）**
+
 ```powershell
 cd C:\Path\To\pulse-bot
 .\scripts\pulse-pull.ps1 -Install
@@ -53,6 +55,14 @@ cd C:\Path\To\pulse-bot
 ```powershell
 Get-ScheduledTask -TaskName PulseBotSync | Format-List
 ```
+
+**方法 B：手动导入 XML（高级）**
+
+仓库提供了 `scripts/pulse-pull-task.xml`，里面硬编码的路径是占位符 `C:\Path\To\...\pulse-pull.ps1`，需要先替换再导入：
+
+1. 编辑 `scripts/pulse-pull-task.xml`，把 `<Arguments>` 和 `<WorkingDirectory>` 改成你的实际路径
+2. 打开「任务计划程序」 → 「导入任务」 → 选 `pulse-pull-task.xml`
+3. 验证：右侧栏应看到 `PulseBotSync`
 
 ### 4. 查看同步日志
 

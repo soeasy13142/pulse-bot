@@ -12,17 +12,16 @@
 
 ### 1. 复制 bot 代码到 VPS
 
-代码位于本 vault `91_System/93_Scripts/pulse-bot/`（Python 包结构：`pulse-bot/pulse_bot/*.py`，含 `__init__.py` / `requirements.txt` / `systemd/` / `docs/` / `tests/`）。
+代码位于独立仓库 [pulse-bot](https://github.com/soeasy13142/pulse-bot)（v0.1 起从原 vault subtree split 出来）。
 
 ```bash
-# 在本地（Mac）
-cd /Users/charliepan/Downloads/my_obsidian
-scp -r 91_System/93_Scripts/pulse-bot/ pulse-bot@<vps-host>:/tmp/pulse-bot-app/
+# 在本地（或直接在 VPS 上 clone 都行）
+git clone https://github.com/soeasy13142/pulse-bot.git /tmp/pulse-bot-app
 
 # 在 VPS
 sudo mv /tmp/pulse-bot-app /opt/pulse-bot/app
 sudo chown -R pulse-bot:pulse-bot /opt/pulse-bot/app
-ls -la /opt/pulse-bot/app/pulse_bot/   # 应看到 bot.py / card.py / config.py / git_sync.py / intent.py
+ls -la /opt/pulse-bot/app/pulse_bot/   # 应看到 bot.py / card.py / config.py / dead_letter.py / git_sync.py / intent.py
 ```
 
 ### 2. 配置 vault 仓库
@@ -74,9 +73,30 @@ VAULT_REPO_DIR=/opt/pulse-bot/vault
 GIT_REMOTE=origin
 GIT_BRANCH=master
 LOG_LEVEL=INFO
+DEAD_LETTER_PATH=/opt/pulse-bot/dead_letter.jsonl
 ```
 
-**注意**：`TELEGRAM_BOT_TOKEN` 是必需的（`config.py` 启动时校验）。
+**注意**：`TELEGRAM_BOT_TOKEN` 是必需的（`config.py` 启动时校验）。`DEAD_LETTER_PATH` 可选，默认值就是上面那个 — 改路径时记得让 `pulse-bot` 用户对目录有写权限。
+
+### 4.5 在 vault 仓库安装 pre-commit 安全 hook（强烈建议）
+
+这是 v0.1 的安全机制：bot 的 commit 一旦试图把文件写到 `00_Inbox/_pulse/` 以外，hook 会直接终止 commit，防止 bot 故障时污染其他目录。
+
+```bash
+# 在本地（vault 仓库根目录）
+cp /opt/pulse-bot/app/docs/hooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+
+# 测试 hook
+git config user.name "Pulse Bot"
+echo "test" > 00_Inbox/_pulse/test.md && git add 00_Inbox/_pulse/test.md && git commit -m "test allowed"   # 应成功
+echo "test" > Other/test.md && git add Other/test.md && git commit -m "test blocked"                        # 应被拦截
+git reset HEAD~1   # 撤掉 init test commit
+```
+
+> hook 通过 `git config user.name` 识别 bot 提交（值需为 "Pulse Bot"，与 `systemd/pulse-bot.service` 启动时配置的 `git config user.name "Pulse Bot"` 一致）。人类提交不受影响。详见 `docs/hooks/README.md`。
+
+> 注意：这步必须在 VPS 端的 vault `/opt/pulse-bot/vault` 仓库里也装一次（不只是你本地 vault），否则 VPS 端推送没拦截。
 
 ### 5. 配置白名单（config.yaml）
 
@@ -150,22 +170,26 @@ sudo journalctl -u pulse-bot -f
 
 ### 9. 验证 Mac 端同步
 
-由于 M2-T2 launchd 受 macOS `~/Downloads/` 路径限制目前 deferred（见 [[setup.md#遗留问题]] 与 plan 文件 M2-T2 节），**v0.1 用手动 pull**：
+由于 M2-T2 launchd 受 macOS `~/Downloads/` 路径限制目前 deferred（见 [[setup.md#遗留问题]] 与 plan 文件 M2-T2 节），**v0.1 Mac 端用手动 git pull**：
 
 ```bash
 # 在 Mac（Vault 根目录）
-bash /Users/charliepan/Downloads/my_obsidian/91_System/93_Scripts/pulse-pull.sh
-tail -5 ~/Library/Logs/pulse-sync.log
+cd <your-vault-repo>
+git pull --rebase --autostash
+git log --oneline -5    # 看 VPS 端刚 push 的几个 commit 是否落到本地
 ```
 
 期望：
-- 退出码 0
-- 日志显示 `pulse-pull: success`
-- `00_Inbox/_pulse/` 下出现 4 张新 Pulse Card（步骤 8 发送的消息）
+- `git pull` 退出码 0
+- 最近 5 个 commit 里看到步骤 8 的 4 张 Pulse Card（`pulse: ...` 前缀）
+
+> **可选优化**：如果不想每次手动 pull，可以在 Mac 上用 cron / launchd（自己写 wrapper 调用 `git pull`）。本仓库不提供 Mac 端脚本（M2 deferred）。Windows 用户见 [[setup-windows.md]] 用 `pulse-pull.ps1`。
 
 ### 10. 在 Obsidian 内验证 Dashboard
 
-打开 `91_System/Dashboards/Pulse-Dashboard.md`，三块 Dataview 查询都应渲染：
+**首次使用**：把仓库里的 `templates/dashboards/Pulse-Dashboard.md` 复制到 vault 的 `91_System/Dashboards/Pulse-Dashboard.md`（模板内有详细安装步骤），按你 vault 的实际路径调整 Dataview 查询里的 `FROM "00_Inbox/_pulse"`。
+
+打开 dashboard 路径，三块 Dataview 查询都应渲染：
 
 | 区块 | 期望内容 |
 |---|---|

@@ -70,3 +70,5 @@ git -C /opt/pulse-bot clone git@github.com:<user>/my_obsidian.git
 ## 下一步
 
 继续 [[deployment.md]] 完成 bot 服务部署。
+
+> **首次部署后建议**：在 vault 仓库里安装 pre-commit 安全 hook（详见 [[deployment#45-在-vault-仓库安装-pre-commit-安全-hook强烈建议]]），可阻止 bot 在故障情况下写入 `00_Inbox/_pulse/` 之外的目录。

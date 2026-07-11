@@ -6,8 +6,8 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen.svg)](#测试)
-[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)](#测试)
+[![Tests](https://img.shields.io/badge/tests-73%2F73%20passing-brightgreen.svg)](#测试)
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](#测试)
 
 [**English**](README.md) | [**中文**](README.zh.md)
 
@@ -43,6 +43,11 @@
       │            （通过 Dataview 查询 _pulse/ 目录）               │
 ```
 
+**端到端 SLA**：
+- 手机 → VPS commit：< 5 秒（通过 Telegram polling）
+- VPS → Mac：取决于同步方式。**Windows**：通过 Task Scheduler + `pulse-pull.ps1` 周期 ≤ 5 分钟。**Mac**：手动 `git pull` 即时；通过 cron 时 ≤ 5 分钟。
+- Linux VPS 同机：即时（commit + push 同一台机器）。
+
 ## 功能特性
 
 - **10 秒捕获**：打开 Telegram → 发送消息 → 完成。
@@ -51,7 +56,7 @@
 - **Git 驱动同步**：每张卡片 = 一次提交。完整的 git 历史记录。
 - **推送失败重试**：3 次重试，指数退避。
 - **systemd 加固**：以非特权用户运行，`ProtectSystem=strict`，`ReadWritePaths` 仅限 vault。
-- **57 项测试，93% 覆盖率**：从第一天起就采用 TDD 开发。
+- **73 项测试，90% 覆盖率**：从第一天起就采用 TDD 开发。
 
 ## 快速开始
 
@@ -106,22 +111,35 @@ pulse-bot/
 │   ├── bot.py               # Telegram 监听器 + 命令处理器
 │   ├── card.py              # Pulse Card 生成（slug、路径、渲染）
 │   ├── config.py            # 配置加载器（环境变量 + YAML）
+│   ├── dead_letter.py       # 失败的推送的持久化死信队列
 │   ├── git_sync.py          # GitSync 带重试机制
 │   └── intent.py            # 意图推断
 ├── systemd/
 │   └── pulse-bot.service    # 带加固的 systemd 单元
-├── tests/                   # 57 项测试，93% 覆盖率
+├── tests/                   # 69 项测试，90% 覆盖率
 │   ├── test_bot.py
 │   ├── test_card.py
 │   ├── test_config.py
+│   ├── test_dead_letter.py
 │   ├── test_git_sync.py
 │   ├── test_intent.py
-│   └── test_integration.py
+│   ├── test_integration.py
+│   └── test_smoke_e2e.py    # 离线 E2E 冒烟测试
+├── templates/
+│   └── dashboards/
+│       └── Pulse-Dashboard.md  # 复制到 vault 的 91_System/Dashboards/
+├── scripts/
+│   ├── pulse-pull.ps1           # Windows 同步脚本（Task Scheduler）
+│   └── pulse-pull-task.xml      # Windows Task Scheduler 导出
 └── docs/
     ├── setup.md             # VPS 环境搭建
+    ├── setup-windows.md     # Windows 同步配置指南
     ├── deployment.md        # 部署手册 + E2E 测试
     ├── runbook.md           # 监控与故障排查
-    └── usage.md             # 用户使用指南
+    ├── usage.md             # 用户使用指南
+    └── hooks/
+        ├── pre-commit       # Pre-commit 钩子模板（阻止 bot 写入 _pulse/ 外的路径）
+        └── README.md        # 钩子安装指南
 ```
 
 ## 命令
@@ -131,7 +149,6 @@ pulse-bot/
 | `/start` / `/help` | 显示帮助 |
 | `/p <text>` | 创建 Pulse Card（或者直接发送纯文本） |
 | `/recent [N]` | 列出最近 N 张卡片（默认 10，范围 1–20） |
-| `/promote <id>` | 将 Pulse Card 升级为完整笔记（v0.2 实现） |
 
 ## 测试
 

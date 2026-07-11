@@ -5,8 +5,8 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-73%2F73%20passing-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)](#testing)
 
 [**English**](README.md) | [**中文**](README.zh.md)
 
@@ -42,6 +42,11 @@ The philosophy: **separate capture from organization**. Most note-taking systems
       │            (Dataview query of _pulse/ folder)              │
 ```
 
+**End-to-end SLA**:
+- Phone → VPS commit: < 5 s (via Telegram polling)
+- VPS → Mac: depends on sync method. **Windows**: ≤ 5 min via Task Scheduler + `pulse-pull.ps1`. **Mac**: instant if `git pull` is run manually; ≤ 5 min if set up via cron.
+- Linux VPS → VPS itself: instant (commit + push on same machine).
+
 ## Features
 
 - **10-second capture**: Open Telegram → send message → done.
@@ -50,7 +55,7 @@ The philosophy: **separate capture from organization**. Most note-taking systems
 - **Git-backed sync**: Every card = one commit. Full history in git log.
 - **Retry on push failure**: 3 retries with exponential backoff.
 - **systemd-hardened**: Runs as unprivileged user, `ProtectSystem=strict`, `ReadWritePaths` limited to vault.
-- **57 tests, 93% coverage**: Built with TDD from day one.
+- **73 tests, 90% coverage**: Built with TDD from day one.
 
 ## Quick start
 
@@ -105,22 +110,35 @@ pulse-bot/
 │   ├── bot.py               # Telegram listener + command handlers
 │   ├── card.py              # Pulse Card generation (slug, path, render)
 │   ├── config.py            # Config loader (env + YAML)
+│   ├── dead_letter.py       # Persistent dead-letter queue for failed pushes
 │   ├── git_sync.py          # GitSync with retry
 │   └── intent.py            # Intent inference
 ├── systemd/
 │   └── pulse-bot.service    # systemd unit with hardening
-├── tests/                   # 57 tests, 93% coverage (run pytest --cov to see current)
+├── tests/                   # 73 tests, 90% coverage (run pytest --cov to see current)
 │   ├── test_bot.py
 │   ├── test_card.py
 │   ├── test_config.py
+│   ├── test_dead_letter.py
 │   ├── test_git_sync.py
 │   ├── test_intent.py
-│   └── test_integration.py
+│   ├── test_integration.py
+│   └── test_smoke_e2e.py    # Offline E2E smoke tests
+├── templates/
+│   └── dashboards/
+│       └── Pulse-Dashboard.md  # Drop into vault at 91_System/Dashboards/
+├── scripts/
+│   ├── pulse-pull.ps1           # Windows sync script (Task Scheduler)
+│   └── pulse-pull-task.xml      # Windows Task Scheduler export
 └── docs/
     ├── setup.md             # VPS environment setup
+    ├── setup-windows.md     # Windows sync setup guide
     ├── deployment.md        # Deployment runbook + E2E test
     ├── runbook.md           # Monitoring + troubleshooting
-    └── usage.md             # End-user guide
+    ├── usage.md             # End-user guide
+    └── hooks/
+        ├── pre-commit       # Pre-commit hook template (blocks bot writes outside _pulse/)
+        └── README.md        # Hook installation guide
 ```
 
 ## Commands
@@ -130,7 +148,6 @@ pulse-bot/
 | `/start` / `/help` | Show help |
 | `/p <text>` | Create a Pulse Card (or just send plain text) |
 | `/recent [N]` | List recent N cards (default 10, 1 ≤ N ≤ 20) |
-| `/promote <id>` | Promote a card to a full note (v0.2) |
 
 ## Testing
 
