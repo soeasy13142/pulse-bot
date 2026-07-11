@@ -632,6 +632,29 @@ async def test_message_handler_rejects_during_shutdown(monkeypatch):
         await bot_mod.handle_message(fake_update, fake_context)
 
 
+async def test_main_starts_and_stops_watchdog(monkeypatch):
+    """WatchdogPinger is exposed on bot_mod and start()/stop() are called."""
+    from pulse_bot import bot as bot_mod
+
+    started = []
+    stopped = []
+
+    class FakePinger:
+        def start(self):
+            started.append(True)
+        def stop(self):
+            stopped.append(True)
+
+    monkeypatch.setattr(bot_mod, "WatchdogPinger", lambda: FakePinger())
+
+    bot_mod.setup_logging(level="INFO", fmt="text")
+    pinger = bot_mod.WatchdogPinger()
+    pinger.start()
+    pinger.stop()
+    assert started == [True]
+    assert stopped == [True]
+
+
 async def test_main_shuts_down_cleanly(monkeypatch):
     """Exercise main() lifecycle: initialize/start/start_polling/shutdown loop/stop/shutdown/exit(0)."""
     from pulse_bot import bot as bot_mod

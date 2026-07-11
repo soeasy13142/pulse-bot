@@ -20,7 +20,7 @@ from pulse_bot.intent import infer_intent
 from pulse_bot.config import load_config
 from pulse_bot.dead_letter import DeadLetterQueue
 from pulse_bot.lifecycle import ShutdownCoordinator, ShutdownInProgress, register_signal_handlers
-# from pulse_bot.observability import setup_logging  # TODO(task-3): uncomment when observability module exists
+from pulse_bot.observability import setup_logging, WatchdogPinger
 
 logger = logging.getLogger(__name__)
 
@@ -206,15 +206,15 @@ def _flush_dead_letters(sync: GitSync, dl: DeadLetterQueue) -> int:
 
 async def main() -> None:
     """Entry point."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
     config = load_config()
+    setup_logging(level=config.get("log_level", "INFO"), fmt=config.get("log_format", "json"))
 
     coord = ShutdownCoordinator(drain_timeout=config.get("shutdown_timeout", 30.0))
     loop = asyncio.get_running_loop()
     register_signal_handlers(loop, coord)
+
+    pinger = WatchdogPinger(interval=10.0)
+    pinger.start()
 
     # Flush dead letters on startup
     try:
@@ -243,19 +243,22 @@ async def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Pulse Bot starting...")
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
+    try:
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
 
-    # Wait for shutdown
-    while not coord.is_shutting_down:
-        await asyncio.sleep(0.5)
+        # Wait for shutdown
+        while not coord.is_shutting_down:
+            await asyncio.sleep(0.5)
 
-    # Drain
-    drained = await coord.wait_drain()
-    await application.updater.stop()
-    await application.stop()
-    await application.shutdown()
+        # Drain
+        drained = await coord.wait_drain()
+    finally:
+        pinger.stop()
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
 
     sys.exit(0 if drained else 1)
 
