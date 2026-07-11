@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Pulse Bot safety hook
+# Installed in vault repo: cp docs/hooks/pre-commit <vault>/.git/hooks/pre-commit
+# Blocks bot commits from writing outside 00_Inbox/_pulse/
+set -u
+
+BOT_AUTHOR_NAME="Pulse Bot"
+ALLOWED_PREFIX="00_Inbox/_pulse/"
+
+# Skip if not a bot commit
+AUTHOR_NAME=$(git config user.name)
+if [ "$AUTHOR_NAME" != "$BOT_AUTHOR_NAME" ]; then
+    exit 0
+fi
+
+# Check every staged file
+while IFS= read -r filepath; do
+    case "$filepath" in
+        "$ALLOWED_PREFIX"*)
+            # Allowed — under _pulse/
+            ;;
+        *)
+            echo "ERROR: Pulse Bot attempted to write outside $ALLOWED_PREFIX"
+            echo "       Blocked file: $filepath"
+            echo "       Bot commits are restricted to 00_Inbox/_pulse/ only."
+            echo "       This is a safety measure — do not bypass with --no-verify."
+            exit 1
+            ;;
+    esac
+done < <(git diff --cached --name-only)
+
+exit 0
