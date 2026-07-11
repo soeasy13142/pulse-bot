@@ -8,6 +8,10 @@
 [![Tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen.svg)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)](#testing)
 
+[**English**](README.md) | [**中文**](README.zh.md)
+
+---
+
 ## What it does
 
 Pulse Bot lets you capture fleeting thoughts via Telegram and have them automatically written to your Obsidian vault as **Pulse Cards** — unpolished, raw fragments stored in `00_Inbox/_pulse/`. Later, when you're at your desk, you decide each card's fate: promote it to a full note, archive it, or discard it.
