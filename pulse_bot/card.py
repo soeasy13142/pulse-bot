@@ -48,7 +48,7 @@ updated: {ts_iso}
 source: "telegram:{user_id}"
 status: pulse
 raw_text: |
-  {text}
+  {text.replace(chr(10), chr(10) + "  ")}
 intent: {intent}
 captured_at: {ts_iso}
 ---

@@ -64,3 +64,42 @@ def test_render_card_includes_timestamp():
     assert "### 原始消息" in card
     assert "测试消息" in card
     assert "### 后续处理" in card
+
+
+def test_render_card_multiline_yaml_parsable():
+    """Multi-line text must produce a frontmatter block that yaml.safe_load can parse.
+
+    Regression for: `raw_text: |\\n  {text}` only indented first line; subsequent lines
+    had 0 indent → YAML parser saw them as top-level keys, breaking the card.
+    """
+    import yaml
+    when = datetime(2026, 7, 9, 20, 23, 45, tzinfo=timezone.utc)
+    multiline_text = "第一行\n第二行 with details\n第三行 ending"
+    card = render_card(multiline_text, user_id=12345, intent="idea", when=when)
+
+    # Extract frontmatter (between first --- and second ---)
+    parts = card.split("---", 2)
+    assert len(parts) >= 3, "Card must have valid frontmatter delimiters"
+    fm = yaml.safe_load(parts[1])
+
+    # All lines must be preserved under raw_text
+    assert "raw_text" in fm, f"raw_text missing from parsed frontmatter: {fm}"
+    assert "第一行" in fm["raw_text"]
+    assert "第二行 with details" in fm["raw_text"]
+    assert "第三行 ending" in fm["raw_text"]
+    # Other expected fields still parse cleanly
+    assert fm["intent"] == "idea"
+    assert fm["source"] == "telegram:12345"
+
+
+def test_render_card_multiline_with_trailing_newline():
+    """Trailing newline must not break YAML parsing."""
+    import yaml
+    when = datetime(2026, 7, 9, 20, 23, 45, tzinfo=timezone.utc)
+    card = render_card("line1\nline2\n", user_id=1, intent="task", when=when)
+    parts = card.split("---", 2)
+    assert len(parts) >= 3
+    fm = yaml.safe_load(parts[1])
+    assert "raw_text" in fm
+    assert "line1" in fm["raw_text"]
+    assert "line2" in fm["raw_text"]
