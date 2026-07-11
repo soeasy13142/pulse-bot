@@ -630,3 +630,62 @@ async def test_message_handler_rejects_during_shutdown(monkeypatch):
 
     with pytest.raises(ShutdownInProgress):
         await bot_mod.handle_message(fake_update, fake_context)
+
+
+async def test_main_shuts_down_cleanly(monkeypatch):
+    """Exercise main() lifecycle: initialize/start/start_polling/shutdown loop/stop/shutdown/exit(0)."""
+    from pulse_bot import bot as bot_mod
+
+    # Exit code collector
+    exit_codes = []
+    monkeypatch.setattr(bot_mod.sys, "exit", exit_codes.append)
+
+    # Mock load_config so test does not need env vars or YAML files
+    monkeypatch.setattr(bot_mod, "load_config", lambda: {
+        "telegram_token": "test_token",
+        "allowed_user_ids": [123],
+        "vault_repo_dir": Path("/tmp"),
+        "git_remote": "origin",
+        "git_branch": "master",
+        "dead_letter_path": Path("/tmp/pulse-dead-test.jsonl"),
+    })
+
+    # Make coordinator exit immediately (is_shutting_down=True skips wait loop)
+    class FakeCoord:
+        is_shutting_down = True
+
+        async def track(self):
+            yield
+
+        async def wait_drain(self):
+            return True
+
+        def request_shutdown(self):
+            pass
+
+    monkeypatch.setattr(bot_mod, "ShutdownCoordinator", lambda **kw: FakeCoord())
+
+    # Mock Application builder chain (async methods need AsyncMock for await)
+    fake_app = MagicMock()
+    fake_app.bot_data = {}
+    fake_app.initialize = AsyncMock()
+    fake_app.start = AsyncMock()
+    fake_app.stop = AsyncMock()
+    fake_app.shutdown = AsyncMock()
+    fake_app.updater = MagicMock()
+    fake_app.updater.start_polling = AsyncMock()
+    fake_app.updater.stop = AsyncMock()
+    builder = MagicMock()
+    builder.token.return_value = builder
+    for m in ["read_timeout", "get_updates_read_timeout", "connect_timeout", "pool_timeout"]:
+        getattr(builder, m).return_value = builder
+    builder.build.return_value = fake_app
+    monkeypatch.setattr(bot_mod.Application, "builder", lambda: builder)
+
+    await bot_mod.main()
+
+    assert exit_codes == [0], f"Expected exit(0), got {exit_codes}"
+    fake_app.initialize.assert_called_once()
+    fake_app.start.assert_called_once()
+    fake_app.stop.assert_called_once()
+    fake_app.shutdown.assert_called_once()
