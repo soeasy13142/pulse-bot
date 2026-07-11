@@ -10,7 +10,7 @@ Group=pulse-bot
 WorkingDirectory=/opt/pulse-bot/vault
 Environment="PYTHONPATH=/opt/pulse-bot/app"
 EnvironmentFile=/opt/pulse-bot/.env
-ExecStart=/opt/pulse-bot/.venv/bin/python -m pulse_bot.bot
+ExecStart=/opt/pulse-bot/app/.venv/bin/python -m pulse_bot.bot
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
