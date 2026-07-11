@@ -119,3 +119,12 @@ def test_load_config_allowed_user_ids_empty_list_rejected(env_setup, tmp_path):
     yaml_file.write_text("allowed_user_ids: []\n")
     with pytest.raises(ValueError, match="allowed_user_ids"):
         load_config(path=yaml_file)
+
+
+def test_load_config_vault_repo_dir_null_falls_back_to_env(env_setup, tmp_path):
+    """YAML `vault_repo_dir:` (null) must fall back to env/default, not crash Path(None)."""
+    yaml_file = tmp_path / "null.yaml"
+    yaml_file.write_text("allowed_user_ids:\n  - 999\nvault_repo_dir:\n")
+    config = load_config(path=yaml_file)
+    assert config["vault_repo_dir"] == Path("/tmp/test-vault")
+    assert isinstance(config["vault_repo_dir"], Path)

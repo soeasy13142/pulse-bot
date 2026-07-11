@@ -24,8 +24,12 @@ def load_config(path: Path = None) -> dict:
         with open(config_path) as f:
             yaml_config = yaml.safe_load(f) or {}
         config.update(yaml_config)
-        # Ensure vault_repo_dir is always Path regardless of YAML source type
-        config["vault_repo_dir"] = Path(config["vault_repo_dir"])
+        # Defensive: YAML null → fall back to env/default; otherwise wrap as Path
+        vrd = config["vault_repo_dir"]
+        if vrd is None:
+            config["vault_repo_dir"] = Path(os.getenv("VAULT_REPO_DIR", "/opt/pulse-bot/vault"))
+        else:
+            config["vault_repo_dir"] = Path(vrd)
 
     # Validate required fields
     if not config["telegram_token"]:
