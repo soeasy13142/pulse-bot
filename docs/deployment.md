@@ -62,7 +62,7 @@ systemd unit 通过 `EnvironmentFile=/opt/pulse-bot/.env` 加载环境变量。
 
 ```bash
 sudo -u pulse-bot -i
-cp /opt/pulse-bot/app/.env.example /opt/pulse-bot/.env
+cp /opt/pulse-bot/app/pulse_bot/.env.example /opt/pulse-bot/.env
 chmod 600 /opt/pulse-bot/.env
 nano /opt/pulse-bot/.env
 ```
