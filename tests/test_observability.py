@@ -48,3 +48,53 @@ def test_setup_logging_clears_existing_handlers():
     handlers_after = len(root.handlers)
     setup_logging(level="INFO", fmt="json")
     assert len(logging.getLogger().handlers) == handlers_after  # idempotent
+
+
+def test_watchdog_noop_without_notify_socket(monkeypatch, caplog):
+    from pulse_bot.observability import WatchdogPinger
+
+    monkeypatch.delenv("NOTIFY_SOCKET", raising=False)
+    pinger = WatchdogPinger()
+    pinger.start()
+    pinger.stop()
+    assert "watchdog disabled" in caplog.text
+
+
+def test_watchdog_pings_when_notify_socket_set(monkeypatch):
+    from pulse_bot import observability as obs_mod
+    from pulse_bot.observability import WatchdogPinger
+
+    fake_notifications: list[str] = []
+
+    class FakeNotifier:
+        def notify(self, msg: str) -> None:
+            fake_notifications.append(msg)
+
+    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", FakeNotifier)
+    monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
+
+    pinger = WatchdogPinger(interval=0.05)
+    pinger.start()
+    import time as time_mod
+
+    time_mod.sleep(0.15)
+    pinger.stop()
+
+    assert any("WATCHDOG=1" in n for n in fake_notifications)
+
+
+def test_watchdog_stop_is_idempotent(monkeypatch):
+    from pulse_bot import observability as obs_mod
+    from pulse_bot.observability import WatchdogPinger
+
+    class FakeNotifier:
+        def notify(self, msg: str) -> None:
+            pass
+
+    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", FakeNotifier)
+    monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
+
+    pinger = WatchdogPinger(interval=0.05)
+    pinger.start()
+    pinger.stop()
+    pinger.stop()  # second stop must not raise
