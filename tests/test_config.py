@@ -157,3 +157,63 @@ def test_load_config_dead_letter_path_from_yaml(env_setup, tmp_path):
     config = load_config(path=yaml_file)
     assert config["dead_letter_path"] == Path("/yaml/dlp.jsonl")
     assert isinstance(config["dead_letter_path"], Path)
+
+
+def test_load_config_default_shutdown_timeout(monkeypatch, tmp_path):
+    """shutdown_timeout default is 30.0 when env var not set."""
+    monkeypatch.delenv("SHUTDOWN_TIMEOUT", raising=False)
+    yaml_file = tmp_path / "cfg.yaml"
+    yaml_file.write_text(
+        "telegram_token: test-token\n"
+        "allowed_user_ids:\n  - 123\n"
+    )
+    cfg = load_config(path=yaml_file)
+    assert cfg["shutdown_timeout"] == 30.0
+
+
+def test_load_config_shutdown_timeout_from_env(monkeypatch, tmp_path):
+    """SHUTDOWN_TIMEOUT env var overrides default."""
+    monkeypatch.setenv("SHUTDOWN_TIMEOUT", "15")
+    yaml_file = tmp_path / "cfg.yaml"
+    yaml_file.write_text(
+        "telegram_token: test-token\n"
+        "allowed_user_ids:\n  - 123\n"
+    )
+    cfg = load_config(path=yaml_file)
+    assert cfg["shutdown_timeout"] == 15.0
+
+
+def test_load_config_default_log_format(monkeypatch, tmp_path):
+    """log_format default is 'json' when env var not set."""
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    yaml_file = tmp_path / "cfg.yaml"
+    yaml_file.write_text(
+        "telegram_token: test-token\n"
+        "allowed_user_ids:\n  - 123\n"
+    )
+    cfg = load_config(path=yaml_file)
+    assert cfg["log_format"] == "json"
+
+
+def test_load_config_default_dlq_alert_threshold(monkeypatch, tmp_path):
+    """dlq_alert_threshold default is 5 when env var not set."""
+    monkeypatch.delenv("DLQ_ALERT_THRESHOLD", raising=False)
+    yaml_file = tmp_path / "cfg.yaml"
+    yaml_file.write_text(
+        "telegram_token: test-token\n"
+        "allowed_user_ids:\n  - 123\n"
+    )
+    cfg = load_config(path=yaml_file)
+    assert cfg["dlq_alert_threshold"] == 5
+
+
+def test_load_config_default_dlq_alert_cooldown(monkeypatch, tmp_path):
+    """dlq_alert_cooldown default is 3600 when env var not set."""
+    monkeypatch.delenv("DLQ_ALERT_COOLDOWN", raising=False)
+    yaml_file = tmp_path / "cfg.yaml"
+    yaml_file.write_text(
+        "telegram_token: test-token\n"
+        "allowed_user_ids:\n  - 123\n"
+    )
+    cfg = load_config(path=yaml_file)
+    assert cfg["dlq_alert_cooldown"] == 3600

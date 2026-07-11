@@ -19,6 +19,10 @@ def load_config(path: Path = None) -> dict:
         "git_branch": os.getenv("GIT_BRANCH", "master"),
         "log_level": os.getenv("LOG_LEVEL", "INFO"),
         "dead_letter_path": Path(os.getenv("DEAD_LETTER_PATH", "/opt/pulse-bot/dead_letter.jsonl")),
+        "shutdown_timeout": float(os.getenv("SHUTDOWN_TIMEOUT", "30")),
+        "log_format": os.getenv("LOG_FORMAT", "json"),
+        "dlq_alert_threshold": int(os.getenv("DLQ_ALERT_THRESHOLD", "5")),
+        "dlq_alert_cooldown": int(os.getenv("DLQ_ALERT_COOLDOWN", "3600")),
     }
 
     if config_path.exists():
