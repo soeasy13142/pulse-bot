@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 # In-memory recent cards for /recent command
 _recent_cards: list[dict] = []
 
+# /recent command defaults and bounds
+RECENT_DEFAULT_N = 10
+RECENT_MIN_N = 1
+RECENT_MAX_N = 20
+RECENT_USAGE = f"Usage: /recent [N] where {RECENT_MIN_N} <= N <= {RECENT_MAX_N}"
+
 
 def _is_authorized(user_id: int, allowed_ids) -> bool:
     # Defensive: config validation should reject non-list, but guard runtime too
@@ -81,7 +87,7 @@ async def handle_message(
         "intent": intent,
         "when": when.isoformat(),
     })
-    if len(_recent_cards) > 20:
+    if len(_recent_cards) > RECENT_MAX_N:
         _recent_cards.pop()
 
     if success:
@@ -94,17 +100,34 @@ async def handle_message(
 
 
 async def recent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """List recent Pulse Cards."""
+    """List recent Pulse Cards (count optional via first arg, default 10, range 1..20)."""
     config = load_config()
     if not _is_authorized(update.effective_user.id, config["allowed_user_ids"]):
         await update.message.reply_text("Unauthorized. Ask the owner to add your user_id.")
         return
+
+    # Parse optional N argument
+    n = RECENT_DEFAULT_N
+    if context.args:
+        if len(context.args) > 1:
+            await update.message.reply_text(RECENT_USAGE)
+            return
+        try:
+            parsed = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text(RECENT_USAGE)
+            return
+        if not (RECENT_MIN_N <= parsed <= RECENT_MAX_N):
+            await update.message.reply_text(RECENT_USAGE)
+            return
+        n = parsed
+
     if not _recent_cards:
         await update.message.reply_text("No recent cards.")
         return
 
     lines = ["Recent Pulse Cards:"]
-    for i, card in enumerate(_recent_cards[:10], 1):
+    for i, card in enumerate(_recent_cards[:n], 1):
         first_line = card["text"].split("\n")[0][:40]
         lines.append(f"{i}. [{card['intent']}] {first_line}")
     await update.message.reply_text("\n".join(lines))
