@@ -51,8 +51,8 @@ pulse-bot/
 │   ├── runbook.md                     # Monitoring + troubleshooting
 │   └── usage.md                       # End-user guide
 └── plans/                             # Historical plans (read-only reference)
-    ├── pulse-system-design.md
-    └── pulse-system-implementation-plan.md
+    ├── 2026-07-09_22-30_pulse-system-design_nogit.md
+    └── 2026-07-09_22-45_pulse-system-implementation-plan_nogit.md
 ```
 
 ## Quick Start
@@ -208,11 +208,11 @@ sudo systemctl enable --now pulse-bot
 - Mac launchd auto-pull deferred (vault uses manual `git pull`)
 - Single-user whitelist (multi-user needs config edit + restart)
 
-See `plans/pulse-system-implementation-plan.md` for full v0.1 status.
+See `plans/2026-07-09_22-45_pulse-system-implementation-plan_nogit.md` for full v0.1 status.
 
 ## v0.2 Roadmap
 
-Candidates (see `plans/pulse-system-implementation-plan.md` §v0.2):
+Candidates (see `plans/2026-07-09_22-45_pulse-system-implementation-plan_nogit.md` §v0.2):
 1. `/promote` command with LLM-assisted intent classification
 2. Image attachment support (OCR + raw image save)
 3. Mac launchd shim script workaround
@@ -234,5 +234,5 @@ External skills (auto-loaded when relevant):
 ## Related Links
 
 - **Original vault** (where this code lived): https://github.com/soeasy13142/my_obsidian
-- **Implementation plan**: `plans/pulse-system-implementation-plan.md`
-- **Design spec**: `plans/pulse-system-design.md`
+- **Implementation plan**: `plans/2026-07-09_22-45_pulse-system-implementation-plan_nogit.md`
+- **Design spec**: `plans/2026-07-09_22-30_pulse-system-design_nogit.md`

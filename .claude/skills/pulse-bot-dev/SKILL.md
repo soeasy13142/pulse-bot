@@ -158,5 +158,5 @@ def tmp_git_repo(tmp_path):
 ## Reference
 
 - `CLAUDE.md` — Full project onboarding
-- `plans/pulse-system-design.md` — Design decisions
-- `plans/pulse-system-implementation-plan.md` — Implementation history
+- `plans/2026-07-09_22-30_pulse-system-design_nogit.md` — Design decisions
+- `plans/2026-07-09_22-45_pulse-system-implementation-plan_nogit.md` — Implementation history
