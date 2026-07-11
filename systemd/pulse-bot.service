@@ -4,7 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+WatchdogSec=30
 User=pulse-bot
 Group=pulse-bot
 WorkingDirectory=/opt/pulse-bot/vault
@@ -21,7 +22,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/pulse-bot/vault
+ReadWritePaths=/opt/pulse-bot/vault /opt/pulse-bot/dead_letter.jsonl
 
 [Install]
 WantedBy=multi-user.target

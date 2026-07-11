@@ -213,3 +213,47 @@ sudo rm -rf /etc/pulse-bot
 
 - 运维与监控：[[runbook.md]]
 - 终端用户使用说明：[[usage.md]]
+
+## Upgrading v0.1 -> v0.1.5 (production hardening)
+
+v0.1.5 introduces graceful shutdown, structured JSON logging, systemd watchdog, and DLQ auto-alerts. Upgrade steps:
+
+```bash
+# 1. Pull + install deps (python-json-logger, sdnotify are new)
+cd /opt/pulse-bot/app
+sudo -u pulse-bot git pull
+sudo -u pulse-bot .venv/bin/pip install -r requirements.txt
+
+# 2. Update systemd unit
+sudo systemctl edit pulse-bot
+# Add under [Service]:
+#   Type=notify
+#   WatchdogSec=30
+sudo systemctl daemon-reload
+
+# 3. Restart
+sudo systemctl restart pulse-bot
+
+# 4. Verify
+sudo journalctl -u pulse-bot -f | grep -i watchdog
+# Expect: every ~10s a line indicating watchdog ping sent
+
+# 5. Verify new env vars
+echo $SHUTDOWN_TIMEOUT $LOG_FORMAT $DLQ_ALERT_THRESHOLD $DLQ_ALERT_COOLDOWN
+```
+
+### Rollback v0.1.5 -> v0.1
+
+```bash
+cd /opt/pulse-bot/app
+sudo -u pulse-bot git checkout v0.1
+sudo -u pulse-bot .venv/bin/pip install -r requirements.txt
+sudo systemctl revert pulse-bot
+sudo systemctl restart pulse-bot
+```
+
+### Verifying the upgrade
+
+- Graceful shutdown: `sudo systemctl restart pulse-bot` should take ~1s if no message in-flight, with no errors in journal.
+- Watchdog: `journalctl -u pulse-bot -f` shows periodic ping lines; killing bot with SIGKILL should trigger restart within 30s.
+- DLQ alert: manually create 5+ DLQ entries, send a message, expect a Telegram alert within 1 minute.
