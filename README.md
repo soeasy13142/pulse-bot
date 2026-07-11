@@ -5,8 +5,8 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-40%2F40%20passing-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)](#testing)
 
 ## What it does
 
@@ -46,7 +46,7 @@ The philosophy: **separate capture from organization**. Most note-taking systems
 - **Git-backed sync**: Every card = one commit. Full history in git log.
 - **Retry on push failure**: 3 retries with exponential backoff.
 - **systemd-hardened**: Runs as unprivileged user, `ProtectSystem=strict`, `ReadWritePaths` limited to vault.
-- **40 tests, 92% coverage**: Built with TDD from day one.
+- **57 tests, 93% coverage**: Built with TDD from day one.
 
 ## Quick start
 
@@ -105,7 +105,7 @@ pulse-bot/
 │   └── intent.py            # Intent inference
 ├── systemd/
 │   └── pulse-bot.service    # systemd unit with hardening
-├── tests/                   # 40 tests, 92% coverage
+├── tests/                   # 57 tests, 93% coverage (run pytest --cov to see current)
 │   ├── test_bot.py
 │   ├── test_card.py
 │   ├── test_config.py
@@ -125,7 +125,7 @@ pulse-bot/
 |---|---|
 | `/start` / `/help` | Show help |
 | `/p <text>` | Create a Pulse Card (or just send plain text) |
-| `/recent [N]` | List recent N cards (default 10) |
+| `/recent [N]` | List recent N cards (default 10, 1 ≤ N ≤ 20) |
 | `/promote <id>` | Promote a card to a full note (v0.2) |
 
 ## Testing
@@ -135,7 +135,7 @@ source .venv/bin/activate
 pytest --cov=pulse_bot --cov-report=term-missing tests/
 ```
 
-Expected: **40/40 tests pass, 92% coverage**.
+Expected: all tests pass, coverage ≥ 80%. See badge at top for current exact counts.
 
 ## Documentation
 

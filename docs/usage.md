@@ -77,7 +77,7 @@ bot 立刻回：
 | `/start` 或 `/help` | 显示帮助 |
 | `/p <text>` | 创建 Pulse Card（与直接发文字等价） |
 | `/recent` | 列出最近 10 张 Pulse Card（bot 内存中） |
-| `/recent 20` | 列出最近 20 张 |
+| `/recent N` | 列出最近 N 张（`1 ≤ N ≤ 20`，越界或多余参数返回用法提示） |
 | `/promote <card-id>` | 把 Pulse Card 转正为正式笔记（**v0.1 暂未实现，需手动处理**） |
 
 > **关于 `/recent`**：bot 在内存里保存最近 20 张 Card，**重启 bot 会清空**。要看完整列表，去 Obsidian 看 Pulse Dashboard（用 Dataview）。
