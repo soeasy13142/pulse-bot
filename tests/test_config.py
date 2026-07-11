@@ -95,3 +95,27 @@ def test_load_config_pulses_bot_config_env(monkeypatch, yaml_config):
     config = load_config()
     # YAML overrides env for telegram_token (per design)
     assert config["telegram_token"] == "yaml-token"
+
+
+def test_load_config_allowed_user_ids_int_rejected(env_setup, tmp_path):
+    """YAML `allowed_user_ids: 12345` (scalar int) must raise, not crash later on first message."""
+    yaml_file = tmp_path / "int.yaml"
+    yaml_file.write_text("allowed_user_ids: 12345\n")
+    with pytest.raises(ValueError, match="allowed_user_ids"):
+        load_config(path=yaml_file)
+
+
+def test_load_config_allowed_user_ids_str_rejected(env_setup, tmp_path):
+    """YAML `allowed_user_ids: \"12345\"` (scalar str) must raise, not crash on int-in-str check."""
+    yaml_file = tmp_path / "str.yaml"
+    yaml_file.write_text('allowed_user_ids: "12345"\n')
+    with pytest.raises(ValueError, match="allowed_user_ids"):
+        load_config(path=yaml_file)
+
+
+def test_load_config_allowed_user_ids_empty_list_rejected(env_setup, tmp_path):
+    """YAML `allowed_user_ids: []` (empty list) must raise — no users = no access."""
+    yaml_file = tmp_path / "empty.yaml"
+    yaml_file.write_text("allowed_user_ids: []\n")
+    with pytest.raises(ValueError, match="allowed_user_ids"):
+        load_config(path=yaml_file)

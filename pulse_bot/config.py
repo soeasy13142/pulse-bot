@@ -30,7 +30,8 @@ def load_config(path: Path = None) -> dict:
     # Validate required fields
     if not config["telegram_token"]:
         raise ValueError("TELEGRAM_BOT_TOKEN must be set")
-    if not config["allowed_user_ids"]:
-        raise ValueError("allowed_user_ids must be set")
+    ids = config["allowed_user_ids"]
+    if not isinstance(ids, list) or not ids or not all(isinstance(x, int) for x in ids):
+        raise ValueError("allowed_user_ids must be a non-empty list[int]")
 
     return config

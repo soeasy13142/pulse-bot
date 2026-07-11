@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 _recent_cards: list[dict] = []
 
 
-def _is_authorized(user_id: int, allowed_ids: list[int]) -> bool:
+def _is_authorized(user_id: int, allowed_ids) -> bool:
+    # Defensive: config validation should reject non-list, but guard runtime too
+    if not isinstance(allowed_ids, list):
+        return False
     return user_id in allowed_ids
 
 
@@ -84,11 +87,18 @@ async def handle_message(
     if success:
         await update.message.reply_text(f"✓ Captured: {first_line}")
     else:
-        await update.message.reply_text("⚠ Saved locally but push failed. Will retry.")
+        await update.message.reply_text(
+            "⚠ Saved locally but push failed. "
+            "Run `bash pulse-pull.sh` on VPS or check docs/runbook.md F2."
+        )
 
 
 async def recent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List recent Pulse Cards."""
+    config = load_config()
+    if not _is_authorized(update.effective_user.id, config["allowed_user_ids"]):
+        await update.message.reply_text("Unauthorized. Ask the owner to add your user_id.")
+        return
     if not _recent_cards:
         await update.message.reply_text("No recent cards.")
         return
