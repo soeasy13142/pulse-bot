@@ -44,6 +44,14 @@ def test_build_card_path_format():
     assert path.name.endswith(".md")
     assert path.parent.name == "_pulse"
 
+
+def test_build_card_path_no_collision_same_text_same_instant():
+    """Same text + same `when` must produce DIFFERENT paths (UUID suffix guarantees this)."""
+    when = datetime(2026, 7, 9, 20, 23, 45, tzinfo=timezone.utc)
+    p1 = build_card_path("hello world", when)
+    p2 = build_card_path("hello world", when)
+    assert p1 != p2, f"Same-instant same-text paths must differ; both were {p1}"
+
 def test_render_card_includes_required_fields():
     """渲染的卡片包含所有必填 frontmatter 字段."""
     when = datetime(2026, 7, 9, 20, 23, 45, tzinfo=timezone.utc)

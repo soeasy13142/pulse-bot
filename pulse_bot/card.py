@@ -1,6 +1,7 @@
 """Pulse Card generation: filename, frontmatter, body."""
 import re
 import unicodedata
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,10 +26,11 @@ def make_slug(text: str) -> str:
     return text if text else SLUG_FALLBACK
 
 def build_card_path(text: str, when: datetime) -> Path:
-    """Build full path for a Pulse Card: 00_Inbox/_pulse/<timestamp>_<slug>.md."""
+    """Build full path for a Pulse Card: 00_Inbox/_pulse/<timestamp>_<uuid>_<slug>.md."""
     ts = when.strftime("%Y-%m-%d_%H%M%S")
     slug = make_slug(text)
-    filename = f"{ts}_{slug}.md"
+    suffix = uuid.uuid4().hex[:6]
+    filename = f"{ts}_{suffix}_{slug}.md"
     return Path("00_Inbox/_pulse") / filename
 
 
