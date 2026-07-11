@@ -87,7 +87,10 @@ async def handle_message(
     if success:
         await update.message.reply_text(f"✓ Captured: {first_line}")
     else:
-        await update.message.reply_text("⚠ Saved locally but push failed. Will retry.")
+        await update.message.reply_text(
+            "⚠ Saved locally but push failed. "
+            "Run `bash pulse-pull.sh` on VPS or check docs/runbook.md F2."
+        )
 
 
 async def recent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

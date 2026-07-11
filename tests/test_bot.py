@@ -199,4 +199,5 @@ async def test_handle_message_push_fails(tmp_path):
         await handle_message(update, context)
 
     msg = update.message.reply_text.call_args[0][0]
-    assert "push failed" in msg or "⚠" in msg
+    assert "push failed" in msg
+    assert "pulse-pull.sh" in msg  # honest pointer to manual recovery path
