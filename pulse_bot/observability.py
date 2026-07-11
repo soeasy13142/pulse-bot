@@ -8,7 +8,8 @@ import sys
 def setup_logging(level: str = "INFO", fmt: str = "json") -> None:
     """Configure root logger to write JSON or text records to stderr.
 
-    Idempotent: clears existing handlers before installing new ones.
+    Idempotent: removes previously installed handlers before adding the new one,
+    preserving third-party root-level handlers.
     """
     handler = logging.StreamHandler(sys.stderr)
     if fmt == "json":
