@@ -16,11 +16,15 @@ from pulse_bot.card import build_card_path, render_card
 from pulse_bot.git_sync import GitSync
 from pulse_bot.intent import infer_intent
 from pulse_bot.config import load_config
+from pulse_bot.dead_letter import DeadLetterQueue
 
 logger = logging.getLogger(__name__)
 
 # In-memory recent cards for /recent command
 _recent_cards: list[dict] = []
+
+# Dead letter queue for failed pushes
+_dead_letter = DeadLetterQueue(path=Path("/opt/pulse-bot/dead_letter.jsonl"))
 
 # /recent command defaults and bounds
 RECENT_DEFAULT_N = 10
@@ -59,6 +63,19 @@ async def handle_message(
         await update.message.reply_text("Usage: /p <your idea>")
         return
 
+    # Flush any pending dead letters before processing new message
+    try:
+        sync_for_flush = GitSync(
+            repo_dir=config["vault_repo_dir"],
+            remote_name=config["git_remote"],
+            branch=config["git_branch"],
+        )
+        flushed = _dead_letter.flush(sync_for_flush)
+        if flushed:
+            logger.info("Flushed %d dead letter(s)", flushed)
+    except Exception:
+        logger.exception("Dead letter flush failed (non-fatal)")
+
     when = datetime.now(timezone.utc)
     intent = infer_intent(text)
 
@@ -68,8 +85,13 @@ async def handle_message(
     # Build path and write
     card_path = build_card_path(text, when)
     full_path = config["vault_repo_dir"] / card_path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(card_content, encoding="utf-8")
+    try:
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(card_content, encoding="utf-8")
+    except OSError as e:
+        logger.error("Failed to write card file %s: %s", full_path, e)
+        await update.message.reply_text("⚠ Could not save card due to a file error. Please try again.")
+        return
 
     # Commit + push
     sync = GitSync(
@@ -78,7 +100,11 @@ async def handle_message(
         branch=config["git_branch"],
     )
     first_line = text.split("\n")[0][:50]
-    success = sync.commit_and_push(full_path, message=f"pulse: {first_line}")
+    try:
+        success = sync.commit_and_push(full_path, message=f"pulse: {first_line}")
+    except Exception as e:
+        logger.exception("Git operation failed for %s", full_path)
+        success = False
 
     # Track in memory
     _recent_cards.insert(0, {
@@ -93,9 +119,11 @@ async def handle_message(
     if success:
         await update.message.reply_text(f"✓ Captured: {first_line}")
     else:
+        # Enqueue dead letter for later retry
+        _dead_letter.enqueue(str(full_path), f"pulse: {first_line}", error="push failed after retries")
         await update.message.reply_text(
-            "⚠ Saved locally but push failed. "
-            "Run `bash pulse-pull.sh` on VPS or check docs/runbook.md F2."
+            "⚠ Saved locally but push failed. Will retry automatically. "
+            "Run `bash pulse-pull.sh` on VPS or check docs/runbook.md."
         )
 
 
@@ -146,6 +174,11 @@ Capture takes <10 seconds. Just send your idea!
     await update.message.reply_text(help_text)
 
 
+def _flush_dead_letters(sync: GitSync) -> int:
+    """Flush pending dead letters. Returns number flushed."""
+    return _dead_letter.flush(sync)
+
+
 def main() -> None:
     """Entry point."""
     logging.basicConfig(
@@ -153,6 +186,19 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     config = load_config()
+
+    # Flush dead letters on startup
+    try:
+        sync = GitSync(
+            repo_dir=config["vault_repo_dir"],
+            remote_name=config["git_remote"],
+            branch=config["git_branch"],
+        )
+        flushed = _flush_dead_letters(sync)
+        if flushed:
+            logger.info("Startup: flushed %d dead letter(s)", flushed)
+    except Exception:
+        logger.exception("Startup dead letter flush failed (non-fatal)")
 
     app = Application.builder().token(config["telegram_token"]).build()
 

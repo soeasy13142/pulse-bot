@@ -1,7 +1,15 @@
-"""Tests for bot.py command parsing and authorization."""
+"""Tests for bot.py command parsing, authorization, error handling."""
+from pathlib import Path
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from pulse_bot.bot import _is_authorized, handle_message, recent_command, help_command
+from pulse_bot.bot import (
+    _is_authorized,
+    _flush_dead_letters,
+    handle_message,
+    recent_command,
+    help_command,
+)
+from pulse_bot.dead_letter import DeadLetterQueue
 
 
 def test_is_authorized_true():
@@ -384,8 +392,13 @@ async def test_handle_message_with_p_prefix(tmp_path):
     assert "/p" not in msg
 
 
-async def test_handle_message_push_fails(tmp_path):
-    """If commit_and_push returns False, user sees push failure warning."""
+async def test_handle_message_push_fails(tmp_path, monkeypatch):
+    """If commit_and_push returns False, user sees push failure warning and dead letter is enqueued."""
+    from pulse_bot import bot as bot_mod
+
+    dl_path = tmp_path / "dead.jsonl"
+    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+
     update = _make_update(user_id=12345, text="hello world")
     context = _make_context()
 
@@ -398,4 +411,130 @@ async def test_handle_message_push_fails(tmp_path):
 
     msg = update.message.reply_text.call_args[0][0]
     assert "push failed" in msg
-    assert "pulse-pull.sh" in msg  # honest pointer to manual recovery path
+    assert "Will retry" in msg
+    assert "pulse-pull.sh" in msg
+
+    # Dead letter should have been enqueued
+    assert bot_mod._dead_letter.count == 1
+
+
+class FakeGitSync:
+    """Mock GitSync matching constructor signature for tests."""
+    def __init__(self, repo_dir=None, remote_name=None, branch=None, retries=3, dry_run=False):
+        self.success = True
+        self.last_file = None
+        self.last_message = None
+
+    def commit_and_push(self, file_path, message):
+        self.last_file = file_path
+        self.last_message = message
+        return self.success
+
+
+async def test_dead_letter_enqueued_on_push_failure(tmp_path, monkeypatch):
+    """When commit_and_push fails, a dead letter should be enqueued."""
+    from pulse_bot import bot as bot_mod
+
+    dl_path = tmp_path / "dead.jsonl"
+    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+    monkeypatch.setattr(bot_mod, "load_config", lambda: {
+        "telegram_token": "test",
+        "allowed_user_ids": [123],
+        "vault_repo_dir": tmp_path / "vault",
+        "git_remote": "origin",
+        "git_branch": "master",
+    })
+    monkeypatch.setattr(bot_mod, "build_card_path", lambda text, when: Path("00_Inbox/_pulse/test.md"))
+
+    # Return a FakeGitSync that always fails
+    def make_failing_sync(**kw):
+        gs = FakeGitSync()
+        gs.success = False
+        return gs
+    monkeypatch.setattr(bot_mod, "GitSync", make_failing_sync)
+
+    update = AsyncMock()
+    update.effective_user.id = 123
+    update.message.text = "test idea"
+    update.message.reply_text = AsyncMock()
+
+    await handle_message(update, MagicMock())
+
+    assert bot_mod._dead_letter.count == 1
+    assert "test.md" in bot_mod._dead_letter.pending_paths[0]
+
+
+async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkeypatch):
+    """When file write fails, user should get a friendly error, not a crash."""
+    import pathlib
+    from pulse_bot import bot as bot_mod
+
+    dl_path = tmp_path / "dead.jsonl"
+    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+    monkeypatch.setattr(bot_mod, "GitSync", FakeGitSync)
+    monkeypatch.setattr(bot_mod, "load_config", lambda: {
+        "telegram_token": "test",
+        "allowed_user_ids": [123],
+        "vault_repo_dir": tmp_path / "vault",
+        "git_remote": "origin",
+        "git_branch": "master",
+    })
+
+    update = AsyncMock()
+    update.effective_user.id = 123
+    update.message.text = "test idea"
+    update.message.reply_text = AsyncMock()
+
+    # Make Path.write_text raise OSError
+    def failing_write(self, *args, **kwargs):
+        raise OSError("Disk full")
+    monkeypatch.setattr(pathlib.Path, "write_text", failing_write)
+
+    await handle_message(update, MagicMock())
+
+    reply = update.message.reply_text
+    assert reply.called
+    error_text = reply.call_args[0][0]
+    assert "error" in error_text.lower() or "fail" in error_text.lower()
+
+
+async def test_dead_letter_flushed_on_startup(tmp_path, monkeypatch):
+    """Dead letter should be flushed via _flush_dead_letters."""
+    from pulse_bot import bot as bot_mod
+    from pulse_bot.git_sync import GitSync
+
+    # Set up a real git repo in vault first
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    import subprocess
+    subprocess.run(["git", "init"], cwd=vault, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=vault, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=vault, check=True)
+    (vault / "README.md").write_text("# test")
+    subprocess.run(["git", "add", "README.md"], cwd=vault, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=vault, check=True)
+
+    # Create an untracked file — this simulates a card that was saved locally
+    # but never committed (e.g., bot restarted before git ops completed), so it
+    # ended up as a dead letter entry. The file exists on disk but git doesn't
+    # know about it yet.
+    (vault / "old_card.md").write_text("old content")
+
+    dl_path = tmp_path / "dead.jsonl"
+    dl = DeadLetterQueue(path=dl_path)
+    dl.enqueue(str(vault / "old_card.md"), "pulse: old")
+
+    monkeypatch.setattr(bot_mod, "_dead_letter", dl)
+    monkeypatch.setattr(bot_mod, "load_config", lambda: {
+        "telegram_token": "test",
+        "allowed_user_ids": [123],
+        "vault_repo_dir": vault,
+        "git_remote": "origin",
+        "git_branch": "master",
+    })
+
+    gs = GitSync(repo_dir=vault, dry_run=True)
+
+    flushed = _flush_dead_letters(gs)
+    assert flushed == 1
+    assert bot_mod._dead_letter.count == 0
