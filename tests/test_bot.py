@@ -73,10 +73,36 @@ async def test_recent_command_no_cards():
     """No recent cards → reply with empty message."""
     update = _make_update()
     context = _make_context()
-    await recent_command(update, context)
+    with patch("pulse_bot.bot.load_config", return_value={
+        "telegram_token": "x", "allowed_user_ids": [12345],
+        "vault_repo_dir": __import__("pathlib").Path("/tmp"),
+        "git_remote": "origin", "git_branch": "master",
+    }):
+        await recent_command(update, context)
     update.message.reply_text.assert_called_once()
     msg = update.message.reply_text.call_args[0][0]
     assert "No recent" in msg
+
+
+async def test_recent_command_unauthorized():
+    """Non-whitelisted user calling /recent gets rejected (no leak of authorized users' cards)."""
+    from pulse_bot.bot import _recent_cards
+    _recent_cards.clear()
+    _recent_cards.append({"text": "secret", "intent": "idea", "when": "2026-07-10T20:00:00+00:00"})
+
+    update = _make_update(user_id=99999)  # not in allowed_user_ids
+    context = _make_context()
+    with patch("pulse_bot.bot.load_config", return_value={
+        "telegram_token": "x", "allowed_user_ids": [12345],
+        "vault_repo_dir": __import__("pathlib").Path("/tmp"),
+        "git_remote": "origin", "git_branch": "master",
+    }):
+        await recent_command(update, context)
+    update.message.reply_text.assert_called_once()
+    msg = update.message.reply_text.call_args[0][0]
+    assert "Unauthorized" in msg
+    assert "secret" not in msg  # MUST NOT leak
+    _recent_cards.clear()
 
 
 async def test_help_command():
@@ -100,7 +126,12 @@ async def test_recent_command_with_cards():
 
     update = _make_update()
     context = _make_context()
-    await recent_command(update, context)
+    with patch("pulse_bot.bot.load_config", return_value={
+        "telegram_token": "x", "allowed_user_ids": [12345],
+        "vault_repo_dir": __import__("pathlib").Path("/tmp"),
+        "git_remote": "origin", "git_branch": "master",
+    }):
+        await recent_command(update, context)
     update.message.reply_text.assert_called_once()
     msg = update.message.reply_text.call_args[0][0]
     assert "Recent" in msg
