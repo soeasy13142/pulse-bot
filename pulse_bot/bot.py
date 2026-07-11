@@ -138,9 +138,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     help_text = """Pulse Bot commands:
 
 /p <text> - Create a Pulse Card (or just send plain text)
-/recent [N] - List recent N cards (default 10)
+/recent [N] - List recent N cards (default 10, 1-20)
 /promote <card-id> - Promote a card to a real note (TODO: M4-T8)
-/dashboard - Link to Obsidian dashboard
 /help - Show this message
 
 Capture takes <10 seconds. Just send your idea!

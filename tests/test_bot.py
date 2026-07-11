@@ -119,6 +119,15 @@ async def test_help_command():
     assert "/help" in msg
 
 
+async def test_help_command_does_not_advertise_dashboard():
+    """/dashboard is not implemented in v0.1; help must not advertise it."""
+    update = _make_update()
+    context = _make_context()
+    await help_command(update, context)
+    msg = update.message.reply_text.call_args[0][0]
+    assert "/dashboard" not in msg
+
+
 async def test_recent_command_with_cards():
     """With cards tracked, /recent lists them."""
     from pulse_bot.bot import _recent_cards
