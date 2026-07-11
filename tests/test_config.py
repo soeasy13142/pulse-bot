@@ -128,3 +128,32 @@ def test_load_config_vault_repo_dir_null_falls_back_to_env(env_setup, tmp_path):
     config = load_config(path=yaml_file)
     assert config["vault_repo_dir"] == Path("/tmp/test-vault")
     assert isinstance(config["vault_repo_dir"], Path)
+
+
+def test_load_config_dead_letter_path_default(env_setup, minimal_yaml):
+    """No DEAD_LETTER_PATH anywhere → default /opt/pulse-bot/dead_letter.jsonl, Path instance."""
+    monkeypatch = pytest.MonkeyPatch() if False else None  # placeholder
+    import os as _os
+    _os.environ.pop("DEAD_LETTER_PATH", None)
+    config = load_config(path=minimal_yaml)
+    assert config["dead_letter_path"] == Path("/opt/pulse-bot/dead_letter.jsonl")
+    assert isinstance(config["dead_letter_path"], Path)
+
+
+def test_load_config_dead_letter_path_from_env(env_setup, minimal_yaml, monkeypatch):
+    """DEAD_LETTER_PATH env var overrides default."""
+    monkeypatch.setenv("DEAD_LETTER_PATH", "/custom/dead_letter.jsonl")
+    config = load_config(path=minimal_yaml)
+    assert config["dead_letter_path"] == Path("/custom/dead_letter.jsonl")
+
+
+def test_load_config_dead_letter_path_from_yaml(env_setup, tmp_path):
+    """YAML `dead_letter_path:` should wrap as Path and win over env/default."""
+    yaml_file = tmp_path / "dlp.yaml"
+    yaml_file.write_text(
+        "allowed_user_ids:\n  - 7\n"
+        "dead_letter_path: /yaml/dlp.jsonl\n"
+    )
+    config = load_config(path=yaml_file)
+    assert config["dead_letter_path"] == Path("/yaml/dlp.jsonl")
+    assert isinstance(config["dead_letter_path"], Path)

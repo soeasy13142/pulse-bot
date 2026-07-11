@@ -18,6 +18,7 @@ def load_config(path: Path = None) -> dict:
         "git_remote": os.getenv("GIT_REMOTE", "origin"),
         "git_branch": os.getenv("GIT_BRANCH", "master"),
         "log_level": os.getenv("LOG_LEVEL", "INFO"),
+        "dead_letter_path": Path(os.getenv("DEAD_LETTER_PATH", "/opt/pulse-bot/dead_letter.jsonl")),
     }
 
     if config_path.exists():
@@ -30,6 +31,12 @@ def load_config(path: Path = None) -> dict:
             config["vault_repo_dir"] = Path(os.getenv("VAULT_REPO_DIR", "/opt/pulse-bot/vault"))
         else:
             config["vault_repo_dir"] = Path(vrd)
+        # Same defensive wrapping for dead_letter_path (may come from YAML or env)
+        dlp = config["dead_letter_path"]
+        if dlp is None:
+            config["dead_letter_path"] = Path(os.getenv("DEAD_LETTER_PATH", "/opt/pulse-bot/dead_letter.jsonl"))
+        else:
+            config["dead_letter_path"] = Path(dlp)
 
     # Validate required fields
     if not config["telegram_token"]:

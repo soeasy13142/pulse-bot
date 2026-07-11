@@ -397,7 +397,7 @@ async def test_handle_message_push_fails(tmp_path, monkeypatch):
     from pulse_bot import bot as bot_mod
 
     dl_path = tmp_path / "dead.jsonl"
-    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+    monkeypatch.setattr(bot_mod, "_get_dead_letter", lambda config: DeadLetterQueue(path=dl_path))
 
     update = _make_update(user_id=12345, text="hello world")
     context = _make_context()
@@ -405,6 +405,7 @@ async def test_handle_message_push_fails(tmp_path, monkeypatch):
     with patch("pulse_bot.bot.load_config", return_value={
         "telegram_token": "x", "allowed_user_ids": [12345],
         "vault_repo_dir": tmp_path, "git_remote": "origin", "git_branch": "master",
+        "dead_letter_path": dl_path,
     }), patch("pulse_bot.bot.GitSync") as mock_sync:
         mock_sync.return_value.commit_and_push.return_value = False
         await handle_message(update, context)
@@ -412,10 +413,11 @@ async def test_handle_message_push_fails(tmp_path, monkeypatch):
     msg = update.message.reply_text.call_args[0][0]
     assert "push failed" in msg
     assert "Will retry" in msg
-    assert "pulse-pull.sh" in msg
+    assert "git pull" in msg
 
     # Dead letter should have been enqueued
-    assert bot_mod._dead_letter.count == 1
+    dl = DeadLetterQueue(path=dl_path)
+    assert dl.count == 1
 
 
 class FakeGitSync:
@@ -436,13 +438,14 @@ async def test_dead_letter_enqueued_on_push_failure(tmp_path, monkeypatch):
     from pulse_bot import bot as bot_mod
 
     dl_path = tmp_path / "dead.jsonl"
-    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+    monkeypatch.setattr(bot_mod, "_get_dead_letter", lambda config: DeadLetterQueue(path=dl_path))
     monkeypatch.setattr(bot_mod, "load_config", lambda: {
         "telegram_token": "test",
         "allowed_user_ids": [123],
         "vault_repo_dir": tmp_path / "vault",
         "git_remote": "origin",
         "git_branch": "master",
+        "dead_letter_path": dl_path,
     })
     monkeypatch.setattr(bot_mod, "build_card_path", lambda text, when: Path("00_Inbox/_pulse/test.md"))
 
@@ -460,8 +463,9 @@ async def test_dead_letter_enqueued_on_push_failure(tmp_path, monkeypatch):
 
     await handle_message(update, MagicMock())
 
-    assert bot_mod._dead_letter.count == 1
-    assert "test.md" in bot_mod._dead_letter.pending_paths[0]
+    dl = DeadLetterQueue(path=dl_path)
+    assert dl.count == 1
+    assert "test.md" in dl.pending_paths[0]
 
 
 async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkeypatch):
@@ -470,7 +474,7 @@ async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkey
     from pulse_bot import bot as bot_mod
 
     dl_path = tmp_path / "dead.jsonl"
-    monkeypatch.setattr(bot_mod, "_dead_letter", DeadLetterQueue(path=dl_path))
+    monkeypatch.setattr(bot_mod, "_get_dead_letter", lambda config: DeadLetterQueue(path=dl_path))
     monkeypatch.setattr(bot_mod, "GitSync", FakeGitSync)
     monkeypatch.setattr(bot_mod, "load_config", lambda: {
         "telegram_token": "test",
@@ -478,6 +482,7 @@ async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkey
         "vault_repo_dir": tmp_path / "vault",
         "git_remote": "origin",
         "git_branch": "master",
+        "dead_letter_path": dl_path,
     })
 
     update = AsyncMock()
@@ -496,6 +501,48 @@ async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkey
     assert reply.called
     error_text = reply.call_args[0][0]
     assert "error" in error_text.lower() or "fail" in error_text.lower()
+
+
+async def test_handle_message_uses_config_dead_letter_path(tmp_path, monkeypatch):
+    """Dead letter queue is initialized from config[dead_letter_path], not hardcoded."""
+    from pulse_bot import bot as bot_mod
+
+    custom_path = tmp_path / "custom_dead.jsonl"
+    monkeypatch.setattr(bot_mod, "load_config", lambda: {
+        "telegram_token": "test",
+        "allowed_user_ids": [123],
+        "vault_repo_dir": tmp_path / "vault",
+        "git_remote": "origin",
+        "git_branch": "master",
+        "dead_letter_path": custom_path,
+    })
+
+    # GitSync that always fails (set instance attr; class attr is reset by __init__)
+    def failing_sync(**kw):
+        gs = FakeGitSync()
+        gs.success = False
+        return gs
+    monkeypatch.setattr(bot_mod, "GitSync", failing_sync)
+
+    # Capture the config-derived path passed to _get_dead_letter
+    captured = {}
+    def capturing_get(config):
+        captured["path"] = config["dead_letter_path"]
+        return DeadLetterQueue(path=custom_path)
+    monkeypatch.setattr(bot_mod, "_get_dead_letter", capturing_get)
+    monkeypatch.setattr(bot_mod, "build_card_path", lambda text, when: Path("00_Inbox/_pulse/test.md"))
+
+    update = AsyncMock()
+    update.effective_user.id = 123
+    update.message.text = "test idea"
+    update.message.reply_text = AsyncMock()
+
+    await handle_message(update, MagicMock())
+
+    # The path passed to _get_dead_letter came from config, not hardcoded
+    assert captured["path"] == custom_path
+    # And the file was actually written there
+    assert custom_path.exists()
 
 
 async def test_dead_letter_flushed_on_startup(tmp_path, monkeypatch):
@@ -524,17 +571,8 @@ async def test_dead_letter_flushed_on_startup(tmp_path, monkeypatch):
     dl = DeadLetterQueue(path=dl_path)
     dl.enqueue(str(vault / "old_card.md"), "pulse: old")
 
-    monkeypatch.setattr(bot_mod, "_dead_letter", dl)
-    monkeypatch.setattr(bot_mod, "load_config", lambda: {
-        "telegram_token": "test",
-        "allowed_user_ids": [123],
-        "vault_repo_dir": vault,
-        "git_remote": "origin",
-        "git_branch": "master",
-    })
-
     gs = GitSync(repo_dir=vault, dry_run=True)
 
-    flushed = _flush_dead_letters(gs)
+    flushed = _flush_dead_letters(gs, dl)
     assert flushed == 1
-    assert bot_mod._dead_letter.count == 0
+    assert dl.count == 0

@@ -23,14 +23,23 @@ logger = logging.getLogger(__name__)
 # In-memory recent cards for /recent command
 _recent_cards: list[dict] = []
 
-# Dead letter queue for failed pushes
-_dead_letter = DeadLetterQueue(path=Path("/opt/pulse-bot/dead_letter.jsonl"))
 
 # /recent command defaults and bounds
 RECENT_DEFAULT_N = 10
 RECENT_MIN_N = 1
 RECENT_MAX_N = 20
 RECENT_USAGE = f"Usage: /recent [N] where {RECENT_MIN_N} <= N <= {RECENT_MAX_N}"
+
+
+def _get_dead_letter(config: dict) -> DeadLetterQueue:
+    """Build the dead-letter queue using the path from loaded config.
+
+    Path resolution order (config already merged YAML + env by load_config):
+    1. config['dead_letter_path'] (already Path instance)
+    Falls back to /opt/pulse-bot/dead_letter.jsonl if config did not provide it.
+    """
+    path = config.get("dead_letter_path") or Path("/opt/pulse-bot/dead_letter.jsonl")
+    return DeadLetterQueue(path=Path(path))
 
 
 def _is_authorized(user_id: int, allowed_ids) -> bool:
@@ -65,12 +74,13 @@ async def handle_message(
 
     # Flush any pending dead letters before processing new message
     try:
+        dl = _get_dead_letter(config)
         sync_for_flush = GitSync(
             repo_dir=config["vault_repo_dir"],
             remote_name=config["git_remote"],
             branch=config["git_branch"],
         )
-        flushed = _dead_letter.flush(sync_for_flush)
+        flushed = dl.flush(sync_for_flush)
         if flushed:
             logger.info("Flushed %d dead letter(s)", flushed)
     except Exception:
@@ -120,10 +130,11 @@ async def handle_message(
         await update.message.reply_text(f"✓ Captured: {first_line}")
     else:
         # Enqueue dead letter for later retry
-        _dead_letter.enqueue(str(full_path), f"pulse: {first_line}", error="push failed after retries")
+        dl = _get_dead_letter(config)
+        dl.enqueue(str(full_path), f"pulse: {first_line}", error="push failed after retries")
         await update.message.reply_text(
             "⚠ Saved locally but push failed. Will retry automatically. "
-            "Run `bash pulse-pull.sh` on VPS or check docs/runbook.md."
+            "Run `git pull --rebase --autostash` on VPS or check docs/runbook.md."
         )
 
 
@@ -174,9 +185,9 @@ Capture takes <10 seconds. Just send your idea!
     await update.message.reply_text(help_text)
 
 
-def _flush_dead_letters(sync: GitSync) -> int:
+def _flush_dead_letters(sync: GitSync, dl: DeadLetterQueue) -> int:
     """Flush pending dead letters. Returns number flushed."""
-    return _dead_letter.flush(sync)
+    return dl.flush(sync)
 
 
 def main() -> None:
@@ -189,12 +200,13 @@ def main() -> None:
 
     # Flush dead letters on startup
     try:
+        dl = _get_dead_letter(config)
         sync = GitSync(
             repo_dir=config["vault_repo_dir"],
             remote_name=config["git_remote"],
             branch=config["git_branch"],
         )
-        flushed = _flush_dead_letters(sync)
+        flushed = _flush_dead_letters(sync, dl)
         if flushed:
             logger.info("Startup: flushed %d dead letter(s)", flushed)
     except Exception:
