@@ -1,4 +1,5 @@
 """Tests for bot.py command parsing, authorization, error handling."""
+from contextlib import asynccontextmanager as _asynccontextmanager
 from pathlib import Path
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,6 +11,7 @@ from pulse_bot.bot import (
     help_command,
 )
 from pulse_bot.dead_letter import DeadLetterQueue
+from pulse_bot.lifecycle import ShutdownCoordinator, ShutdownInProgress
 
 
 def test_is_authorized_true():
@@ -34,7 +36,9 @@ def _make_update(user_id=12345, text="hello"):
 
 
 def _make_context():
-    return MagicMock()
+    ctx = MagicMock()
+    ctx.bot_data = {"coordinator": ShutdownCoordinator()}
+    return ctx
 
 
 async def test_handle_message_unauthorized():
@@ -461,7 +465,9 @@ async def test_dead_letter_enqueued_on_push_failure(tmp_path, monkeypatch):
     update.message.text = "test idea"
     update.message.reply_text = AsyncMock()
 
-    await handle_message(update, MagicMock())
+    ctx = MagicMock()
+    ctx.bot_data = {"coordinator": ShutdownCoordinator()}
+    await handle_message(update, ctx)
 
     dl = DeadLetterQueue(path=dl_path)
     assert dl.count == 1
@@ -495,7 +501,9 @@ async def test_handle_message_file_write_error_replies_friendly(tmp_path, monkey
         raise OSError("Disk full")
     monkeypatch.setattr(pathlib.Path, "write_text", failing_write)
 
-    await handle_message(update, MagicMock())
+    ctx = MagicMock()
+    ctx.bot_data = {"coordinator": ShutdownCoordinator()}
+    await handle_message(update, ctx)
 
     reply = update.message.reply_text
     assert reply.called
@@ -537,7 +545,9 @@ async def test_handle_message_uses_config_dead_letter_path(tmp_path, monkeypatch
     update.message.text = "test idea"
     update.message.reply_text = AsyncMock()
 
-    await handle_message(update, MagicMock())
+    ctx = MagicMock()
+    ctx.bot_data = {"coordinator": ShutdownCoordinator()}
+    await handle_message(update, ctx)
 
     # The path passed to _get_dead_letter came from config, not hardcoded
     assert captured["path"] == custom_path
@@ -576,3 +586,47 @@ async def test_dead_letter_flushed_on_startup(tmp_path, monkeypatch):
     flushed = _flush_dead_letters(gs, dl)
     assert flushed == 1
     assert dl.count == 0
+
+
+async def test_message_handler_wraps_with_coordinator(monkeypatch):
+    """Verify handle_message enters coordinator.track() before processing."""
+    from pulse_bot import bot as bot_mod
+
+    coord = ShutdownCoordinator()
+    fake_update = MagicMock()
+    fake_context = MagicMock()
+    fake_context.bot_data = {"coordinator": coord}
+
+    # Stub out _handle_message_impl so the test does not need real config/IO
+    monkeypatch.setattr(bot_mod, "_handle_message_impl", AsyncMock())
+
+    track_called = False
+    real_track = coord.track
+
+    @_asynccontextmanager
+    async def counting_track():
+        nonlocal track_called
+        track_called = True
+        async with real_track():
+            yield
+
+    monkeypatch.setattr(coord, "track", counting_track)
+    await bot_mod.handle_message(fake_update, fake_context)
+    assert track_called is True
+
+
+async def test_message_handler_rejects_during_shutdown(monkeypatch):
+    """Verify handle_message propagates ShutdownInProgress when coord is shutting down."""
+    from pulse_bot import bot as bot_mod
+
+    coord = ShutdownCoordinator()
+    coord.request_shutdown()
+    fake_update = MagicMock()
+    fake_context = MagicMock()
+    fake_context.bot_data = {"coordinator": coord}
+
+    # Stub out _handle_message_impl so we test only the coordinator rejection path
+    monkeypatch.setattr(bot_mod, "_handle_message_impl", AsyncMock())
+
+    with pytest.raises(ShutdownInProgress):
+        await bot_mod.handle_message(fake_update, fake_context)

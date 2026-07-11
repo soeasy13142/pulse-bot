@@ -1,5 +1,7 @@
 """Pulse Bot main module: Telegram listener and dispatcher."""
+import asyncio
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +19,8 @@ from pulse_bot.git_sync import GitSync
 from pulse_bot.intent import infer_intent
 from pulse_bot.config import load_config
 from pulse_bot.dead_letter import DeadLetterQueue
+from pulse_bot.lifecycle import ShutdownCoordinator, ShutdownInProgress, register_signal_handlers
+# from pulse_bot.observability import setup_logging  # TODO(task-3): uncomment when observability module exists
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +53,11 @@ def _is_authorized(user_id: int, allowed_ids) -> bool:
     return user_id in allowed_ids
 
 
-async def handle_message(
+async def _handle_message_impl(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle plain text message: create a Pulse Card."""
+    """Handle plain text message: create a Pulse Card (unwrapped)."""
     config = load_config()
     user_id = update.effective_user.id
 
@@ -138,6 +142,16 @@ async def handle_message(
         )
 
 
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Handle plain text message: wrap with coordinator tracking."""
+    coord: ShutdownCoordinator = context.bot_data["coordinator"]
+    async with coord.track():
+        await _handle_message_impl(update, context)
+
+
 async def recent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List recent Pulse Cards (count optional via first arg, default 10, range 1..20)."""
     config = load_config()
@@ -190,13 +204,17 @@ def _flush_dead_letters(sync: GitSync, dl: DeadLetterQueue) -> int:
     return dl.flush(sync)
 
 
-def main() -> None:
+async def main() -> None:
     """Entry point."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     config = load_config()
+
+    coord = ShutdownCoordinator(drain_timeout=config.get("shutdown_timeout", 30.0))
+    loop = asyncio.get_running_loop()
+    register_signal_handlers(loop, coord)
 
     # Flush dead letters on startup
     try:
@@ -212,20 +230,35 @@ def main() -> None:
     except Exception:
         logger.exception("Startup dead letter flush failed (non-fatal)")
 
-    app = Application.builder().token(config["telegram_token"]).build()
+    application = Application.builder().token(config["telegram_token"]).build()
+    application.bot_data["coordinator"] = coord
 
     # Command handlers
-    app.add_handler(CommandHandler("p", handle_message))
-    app.add_handler(CommandHandler("recent", recent_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("start", help_command))
+    application.add_handler(CommandHandler("p", handle_message))
+    application.add_handler(CommandHandler("recent", recent_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("start", help_command))
 
     # Plain text → pulse card
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Pulse Bot starting...")
-    app.run_polling()
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+
+    # Wait for shutdown
+    while not coord.is_shutting_down:
+        await asyncio.sleep(0.5)
+
+    # Drain
+    drained = await coord.wait_drain()
+    await application.updater.stop()
+    await application.stop()
+    await application.shutdown()
+
+    sys.exit(0 if drained else 1)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
