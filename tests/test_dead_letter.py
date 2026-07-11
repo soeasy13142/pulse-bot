@@ -98,3 +98,30 @@ def test_load_persisted_entries_on_init(tmp_path):
     assert dl.count == 1
     assert dl.pending_paths == ["pre_existing.md"]
     assert dl._entries[0]["attempts"] == 2
+
+
+def test_dead_letter_invokes_callback_on_append(tmp_path):
+    """Append should invoke on_new_entry callback."""
+    q = DeadLetterQueue(path=tmp_path / "dlq.jsonl")
+    callback_calls = []
+    q._on_new_entry = lambda: callback_calls.append(True)
+
+    q.append(card_path=tmp_path / "x.md", error="boom", payload={"x": 1})
+    assert callback_calls == [True]
+
+
+def test_dead_letter_callback_failure_does_not_break_append(tmp_path):
+    """Callback exception should not prevent append from writing."""
+    def bad_callback():
+        raise RuntimeError("oops")
+
+    q = DeadLetterQueue(path=tmp_path / "dlq.jsonl", on_new_entry=bad_callback)
+    q.append(card_path=tmp_path / "x.md", error="boom", payload={})
+    assert (tmp_path / "dlq.jsonl").exists()
+
+
+def test_dead_letter_default_callback_is_none(tmp_path):
+    """Default on_new_entry should be None and append should work."""
+    q = DeadLetterQueue(path=tmp_path / "dlq.jsonl")
+    assert q._on_new_entry is None
+    q.append(card_path=tmp_path / "x.md", error="x", payload={})  # no exception

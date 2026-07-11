@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,9 @@ class DeadLetterQueue:
     Survives bot restarts.
     """
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, on_new_entry: Callable[[], None] | None = None):
         self.path = Path(path)
+        self._on_new_entry = on_new_entry
         self._entries: list[dict] = []
         self._load()
 
@@ -46,6 +48,21 @@ class DeadLetterQueue:
         })
         self._save()
         logger.info("Dead letter enqueued: %s (queue: %d)", card_path, len(self._entries))
+
+    def append(self, card_path: Path | str, error: str = "", payload: dict | None = None) -> None:
+        """Add a failed card and invoke on_new_entry callback."""
+        self._entries.append({
+            "path": str(card_path),
+            "error": error,
+            "payload": payload or {},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        self._save()
+        if self._on_new_entry is not None:
+            try:
+                self._on_new_entry()
+            except Exception:
+                logger.exception("dead_letter on_new_entry callback failed")
 
     def flush(self, git_sync) -> int:
         """Retry all entries via git_sync. Returns number of successfully flushed."""
