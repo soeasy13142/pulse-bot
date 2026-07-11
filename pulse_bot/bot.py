@@ -80,7 +80,7 @@ async def _handle_message_impl(
 
     # Flush any pending dead letters before processing new message
     try:
-        dl = _get_dead_letter(config)
+        dl = context.bot_data.get("dead_letter_queue") or _get_dead_letter(config)
         sync_for_flush = GitSync(
             repo_dir=config["vault_repo_dir"],
             remote_name=config["git_remote"],
@@ -136,7 +136,7 @@ async def _handle_message_impl(
         await update.message.reply_text(f"✓ Captured: {first_line}")
     else:
         # Enqueue dead letter for later retry
-        dl = _get_dead_letter(config)
+        dl = context.bot_data.get("dead_letter_queue") or _get_dead_letter(config)
         dl.enqueue(str(full_path), f"pulse: {first_line}", error="push failed after retries")
         await update.message.reply_text(
             "⚠ Saved locally but push failed. Will retry automatically. "
@@ -288,6 +288,9 @@ async def main() -> None:
     except Exception:
         logger.exception("Startup dead letter flush failed (non-fatal)")
 
+    application = Application.builder().token(config["telegram_token"]).build()
+    application.bot_data["coordinator"] = coord
+
     # AlertTrigger: DLQ monitoring and notification
     dlq = _get_dead_letter(config)
 
@@ -302,10 +305,8 @@ async def main() -> None:
         cooldown=float(config.get("dlq_alert_cooldown", 3600)),
     )
     dlq._on_new_entry = lambda: asyncio.create_task(trigger.check())
+    application.bot_data["dead_letter_queue"] = dlq  # store for handlers
     await trigger.check()  # startup check
-
-    application = Application.builder().token(config["telegram_token"]).build()
-    application.bot_data["coordinator"] = coord
 
     # Command handlers
     application.add_handler(CommandHandler("p", handle_message))

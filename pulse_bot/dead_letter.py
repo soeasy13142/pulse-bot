@@ -48,6 +48,11 @@ class DeadLetterQueue:
         })
         self._save()
         logger.info("Dead letter enqueued: %s (queue: %d)", card_path, len(self._entries))
+        if self._on_new_entry is not None:
+            try:
+                self._on_new_entry()
+            except Exception:
+                logger.exception("dead_letter on_new_entry callback failed")
 
     def append(self, card_path: Path | str, error: str = "", payload: dict | None = None) -> None:
         """Add a failed card and invoke on_new_entry callback."""
