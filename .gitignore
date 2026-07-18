@@ -33,3 +33,6 @@ Thumbs.db
 
 # Local logs
 *.log
+
+# Auto-generated Claude Code agent worktrees (temporary isolated copies)
+.claude/worktrees/
