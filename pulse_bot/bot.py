@@ -22,7 +22,7 @@ from pulse_bot.intent import infer_intent
 from pulse_bot.config import load_config
 from pulse_bot.dead_letter import DeadLetterQueue
 from pulse_bot.lifecycle import ShutdownCoordinator, ShutdownInProgress, register_signal_handlers
-from pulse_bot.observability import setup_logging, WatchdogPinger
+from pulse_bot.observability import setup_logging, WatchdogPinger, _HAS_SDNOTIFY
 
 logger = logging.getLogger(__name__)
 

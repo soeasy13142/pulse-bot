@@ -65,6 +65,22 @@ async def test_is_shutting_down_flips_after_request():
     assert coord.is_shutting_down is True
 
 
+def test_register_signal_handlers_noop_on_unsupported_platform(monkeypatch):
+    """register_signal_handlers does not crash when add_signal_handler raises NotImplementedError."""
+    from pulse_bot.lifecycle import ShutdownCoordinator, register_signal_handlers
+
+    coord = ShutdownCoordinator()
+    loop = asyncio.new_event_loop()
+
+    def fake_add_signal_handler(sig, handler):
+        raise NotImplementedError("signal handling not supported")
+
+    monkeypatch.setattr(loop, "add_signal_handler", fake_add_signal_handler)
+    # Should not raise:
+    register_signal_handlers(loop, coord)
+    loop.close()
+
+
 def test_register_signal_handlers_invokes_request_shutdown(monkeypatch):
     coord = ShutdownCoordinator()
     loop = asyncio.new_event_loop()

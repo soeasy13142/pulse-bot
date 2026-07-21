@@ -67,6 +67,13 @@ class ShutdownCoordinator:
 def register_signal_handlers(
     loop: asyncio.AbstractEventLoop, coord: ShutdownCoordinator
 ) -> None:
-    """Install asyncio-native SIGTERM/SIGINT handlers that request shutdown."""
+    """Install asyncio-native SIGTERM/SIGINT handlers that request shutdown.
+
+    No-op on platforms that don't support add_signal_handler (e.g., Windows).
+    """
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, coord.request_shutdown)
+        try:
+            loop.add_signal_handler(sig, coord.request_shutdown)
+        except NotImplementedError:
+            logger.warning("signal handling not supported on this platform")
+            return  # one failure -> all will fail; stop early

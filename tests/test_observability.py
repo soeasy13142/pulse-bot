@@ -83,6 +83,45 @@ def test_watchdog_pings_when_notify_socket_set(monkeypatch):
     assert any("WATCHDOG=1" in n for n in fake_notifications)
 
 
+def test_watchdog_noop_without_sdnotify(monkeypatch):
+    """WatchdogPinger.start() is a no-op when _HAS_SDNOTIFY is False."""
+    from pulse_bot import observability as obs_mod
+    from pulse_bot.observability import WatchdogPinger
+
+    monkeypatch.setattr(obs_mod, "_HAS_SDNOTIFY", False)
+    monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
+    pinger = WatchdogPinger(interval=0.05)
+    pinger.start()
+    # Should not raise; thread should not be created
+    assert pinger._thread is None or not pinger._thread.is_alive()
+    pinger.stop()
+
+
+def test_watchdog_uses_sdnotify_when_available(monkeypatch):
+    """WatchdogPinger notifies systemd when both NOTIFY_SOCKET and sdnotify are available."""
+    from pulse_bot import observability as obs_mod
+    from pulse_bot.observability import WatchdogPinger
+
+    monkeypatch.setattr(obs_mod, "_HAS_SDNOTIFY", True)
+    fake_notifications: list[str] = []
+
+    class FakeNotifier:
+        def notify(self, msg: str) -> None:
+            fake_notifications.append(msg)
+
+    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", lambda: FakeNotifier())
+    monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
+
+    pinger = WatchdogPinger(interval=0.05)
+    pinger.start()
+    import time
+
+    time.sleep(0.15)
+    pinger.stop()
+
+    assert any("WATCHDOG=1" in n for n in fake_notifications)
+
+
 def test_watchdog_stop_is_idempotent(monkeypatch):
     from pulse_bot import observability as obs_mod
     from pulse_bot.observability import WatchdogPinger

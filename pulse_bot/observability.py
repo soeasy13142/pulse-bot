@@ -7,7 +7,11 @@ import threading
 import sys
 from typing import Optional
 
-import sdnotify
+try:
+    import sdnotify
+    _HAS_SDNOTIFY = True
+except ImportError:
+    _HAS_SDNOTIFY = False
 
 
 def setup_logging(level: str = "INFO", fmt: str = "json") -> None:
@@ -55,8 +59,11 @@ class WatchdogPinger:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        if not self._enabled:
-            logging.getLogger(__name__).info("watchdog disabled (NOTIFY_SOCKET not set)")
+        if not self._enabled or not _HAS_SDNOTIFY:
+            if not _HAS_SDNOTIFY:
+                logging.getLogger(__name__).info("watchdog disabled (sdnotify not available)")
+            elif not self._enabled:
+                logging.getLogger(__name__).info("watchdog disabled (NOTIFY_SOCKET not set)")
             return
         self._thread = threading.Thread(target=self._loop, daemon=True, name="watchdog-pinger")
         self._thread.start()
