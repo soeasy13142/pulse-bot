@@ -105,7 +105,7 @@ function Invoke-Diagnose {
 
     # 4. NSSM service status
     Write-Host "`n[4/6] NSSM service..."
-    try { $null = Get-Command nssm -ErrorAction Stop } catch { Write-Host "  ⚠ NSSM not installed (ok if sync-only mode)"; return }
+    try { $null = Get-Command nssm -ErrorAction Stop } catch { Write-Host "  ⚠ NSSM not installed (ok if sync-only mode)"; Write-Host "     Skipping service check — continuing with diagnostics..."; $null = $true }
     try { $svcStatus = & nssm status PulseBot 2>&1; Write-Host "  ✅ PulseBot service: $svcStatus" } catch { Write-Host "  ❌ NSSM service check failed: $_" }
 
     # 5. Sync logs
@@ -172,7 +172,8 @@ if ($Info) { Show-Info; return }
 if (Test-Path $LOG_FILE) {
     $logSize = (Get-Item $LOG_FILE).Length
     if ($logSize -gt 1MB) {
-        $archiveFile = "$LOG_DIR\pulse-sync.1.log"
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $archiveFile = "$LOG_DIR\pulse-sync.$timestamp.log"
         Move-Item $LOG_FILE $archiveFile -Force
         Write-Host "Log rotated: $archiveFile"
     }
@@ -209,6 +210,7 @@ try {
         # Desktop notification (non-blocking)
         if ($ENABLE_TOAST) {
             Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
             $notification = New-Object System.Windows.Forms.NotifyIcon
             $notification.Icon = [System.Drawing.SystemIcons]::Warning
             $notification.BalloonTipTitle = "Pulse Bot Sync"

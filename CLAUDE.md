@@ -3,7 +3,7 @@
 Telegram-driven fragment capture for [Obsidian](https://obsidian.md/) vaults. Capture a thought in 10 seconds via Telegram; normalize it later.
 
 - **Python**: 3.11+, [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot) v20+
-- **Status**: v0.1, 73 tests, 90% coverage, not yet deployed
+- **Status**: v0.2, 106 tests, 93% coverage, not yet deployed
 - **License**: MIT
 - **Repo**: https://github.com/soeasy13142/pulse-bot
 

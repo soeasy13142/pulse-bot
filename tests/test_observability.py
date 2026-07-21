@@ -3,10 +3,23 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import types
 
 import pytest
 
 from pulse_bot.observability import setup_logging
+
+
+def _wait_for_notification(
+    notifications: list[str], timeout: float = 2.0
+) -> None:
+    """Poll notifications list with timeout instead of fixed sleep."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if any("WATCHDOG=1" in n for n in notifications):
+            return
+        time.sleep(0.05)
 
 
 def test_setup_logging_json_format_writes_valid_json(capsys):
@@ -70,14 +83,16 @@ def test_watchdog_pings_when_notify_socket_set(monkeypatch):
         def notify(self, msg: str) -> None:
             fake_notifications.append(msg)
 
-    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", FakeNotifier)
+    import types
+
+    fake_sdnotify = types.ModuleType("sdnotify")
+    fake_sdnotify.SystemdNotifier = FakeNotifier
+    monkeypatch.setattr(obs_mod, "sdnotify", fake_sdnotify)
     monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
 
     pinger = WatchdogPinger(interval=0.05)
     pinger.start()
-    import time as time_mod
-
-    time_mod.sleep(0.15)
+    _wait_for_notification(fake_notifications, timeout=2.0)
     pinger.stop()
 
     assert any("WATCHDOG=1" in n for n in fake_notifications)
@@ -109,14 +124,14 @@ def test_watchdog_uses_sdnotify_when_available(monkeypatch):
         def notify(self, msg: str) -> None:
             fake_notifications.append(msg)
 
-    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", lambda: FakeNotifier())
+    fake_sdnotify = types.ModuleType("sdnotify")
+    fake_sdnotify.SystemdNotifier = lambda: FakeNotifier()
+    monkeypatch.setattr(obs_mod, "sdnotify", fake_sdnotify)
     monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
 
     pinger = WatchdogPinger(interval=0.05)
     pinger.start()
-    import time
-
-    time.sleep(0.15)
+    _wait_for_notification(fake_notifications, timeout=2.0)
     pinger.stop()
 
     assert any("WATCHDOG=1" in n for n in fake_notifications)
@@ -130,7 +145,9 @@ def test_watchdog_stop_is_idempotent(monkeypatch):
         def notify(self, msg: str) -> None:
             pass
 
-    monkeypatch.setattr(obs_mod.sdnotify, "SystemdNotifier", FakeNotifier)
+    fake_sdnotify = types.ModuleType("sdnotify")
+    fake_sdnotify.SystemdNotifier = FakeNotifier
+    monkeypatch.setattr(obs_mod, "sdnotify", fake_sdnotify)
     monkeypatch.setenv("NOTIFY_SOCKET", "/tmp/fake.sock")
 
     pinger = WatchdogPinger(interval=0.05)

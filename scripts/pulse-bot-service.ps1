@@ -125,7 +125,10 @@ function Start-PulseBotService {
     if (-not (Test-NssmAvailable)) { return }
     if (Get-ServiceStatus) {
         Write-Status "Starting '$SERVICE_NAME'..."
-        $null = Invoke-Nssm -Arguments @('start', $SERVICE_NAME)
+        if (-not (Invoke-Nssm -Arguments @('start', $SERVICE_NAME))) {
+            Write-Status "Service '$SERVICE_NAME' failed to start." "ERROR"
+            return
+        }
         Write-Status "Service '$SERVICE_NAME' started." "OK"
     } else {
         Write-Status "Service '$SERVICE_NAME' not installed. Run -Install first." "ERROR"
@@ -137,7 +140,10 @@ function Stop-PulseBotService {
     $status = Get-ServiceStatus
     if ($status) {
         Write-Status "Stopping '$SERVICE_NAME'..."
-        $null = Invoke-Nssm -Arguments @('stop', $SERVICE_NAME)
+        if (-not (Invoke-Nssm -Arguments @('stop', $SERVICE_NAME))) {
+            Write-Status "Service '$SERVICE_NAME' failed to stop." "ERROR"
+            return
+        }
         Write-Status "Service '$SERVICE_NAME' stopped." "OK"
     } else {
         Write-Status "Service '$SERVICE_NAME' not installed." "WARN"
@@ -179,11 +185,17 @@ function Uninstall-Service {
     $status = Get-ServiceStatus
     if ($status) {
         Write-Status "Stopping '$SERVICE_NAME'..."
-        $null = Invoke-Nssm -Arguments @('stop', $SERVICE_NAME)
+        if (-not (Invoke-Nssm -Arguments @('stop', $SERVICE_NAME))) {
+            Write-Status "Service '$SERVICE_NAME' failed to stop." "ERROR"
+            return
+        }
         Start-Sleep -Seconds 2
     }
     Write-Status "Removing '$SERVICE_NAME'..."
-    $null = Invoke-Nssm -Arguments @('remove', $SERVICE_NAME, 'confirm')
+    if (-not (Invoke-Nssm -Arguments @('remove', $SERVICE_NAME, 'confirm'))) {
+        Write-Status "Service '$SERVICE_NAME' failed to remove." "ERROR"
+        return
+    }
     Write-Status "Service '$SERVICE_NAME' removed." "OK"
 }
 
