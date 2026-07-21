@@ -127,10 +127,14 @@ function Invoke-Diagnose {
 
     # 6. Disk space
     Write-Host "`n[6/6] Disk space..."
-    $drive = (Get-Item $VAULT_DIR).PSDrive.Name + ":"
-    $disk = Get-PSDrive -Name (Get-Item $VAULT_DIR).PSDrive.Name
-    $freeGB = [math]::Round($disk.Free / 1GB, 1)
-    Write-Host "  ✅ $freeGB GB free on $drive"
+    try {
+        $drive = (Get-Item $VAULT_DIR).PSDrive.Name + ":"
+        $disk = Get-PSDrive -Name (Get-Item $VAULT_DIR).PSDrive.Name
+        $freeGB = [math]::Round($disk.Free / 1GB, 1)
+        Write-Host "  ✅ $freeGB GB free on $drive"
+    } catch {
+        Write-Host "  ❌ Could not determine disk space: $($_.Exception.Message)"
+    }
 }
 
 function Show-Info {
