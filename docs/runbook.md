@@ -19,7 +19,8 @@ Telegram User
                                                               │
                                           ┌───────────────────┘
                                           ▼
-                              [Mac: manual git pull]
+                              [Windows: Task Scheduler auto-pull]
+                              (every 5 min via pulse-pull.ps1)
                                           │
                                           ▼
                           [Obsidian: Pulse Dashboard via Dataview]
@@ -118,7 +119,7 @@ curl -s https://api.telegram.org/bot<TOKEN>/getMe
 
 ### F2: Push 失败（卡片卡在本地）
 
-**症状**：bot 回 `⚠ Saved locally but push failed. Will retry.`；Mac 端 pull 不到卡片。
+**症状**：bot 回 `⚠ Saved locally but push failed. Will retry.`；Windows 端 pull 不到卡片。
 
 **排查路径**：
 
@@ -166,25 +167,29 @@ sudo systemd-analyze verify /etc/systemd/system/pulse-bot.service
 - `Permission denied` on `/opt/pulse-bot/vault` → 权限或 SELinux/AppArmor
 - `.env` 缺 `TELEGRAM_BOT_TOKEN` → 重新填
 
-### F4: Mac 端 Pull 失败（卡片不到本地）
+### F4: Windows 端 Pull 失败（卡片不到本地）
 
-**症状**：VPS 上 vault 有新文件，但 Mac `git pull` 失败。
+**症状**：VPS 上 vault 有新文件，但 Windows 端的 `git pull`（Task Scheduler 自动执行）失败。
 
 **排查路径**：
 
-```bash
+```powershell
 # 1. 手动 pull 看错误
-cd /Users/charliepan/Downloads/my_obsidian
+cd C:\Users\<你>\path\to\vault
 git pull --rebase --autostash
 
-# 2. 看历史 log
-tail -20 ~/Library/Logs/pulse-sync.log
+# 2. 看同步日志
+Get-Content "$env:LOCALAPPDATA\PulseBot\pulse-sync.log" -Tail 20
+
+# 3. 检查 Task Scheduler 状态
+Get-ScheduledTask -TaskName PulseBotSync | Get-ScheduledTaskInfo
 ```
 
 **常见根因**：
-- **冲突**：Mac 本地有未 commit 修改 → `git status` 查看 → 处理冲突后重新 pull
+- **冲突**：Windows 本地有未 commit 修改 → `git status` 查看 → 处理冲突后重新 pull
 - **网络**：VPN / 代理问题
-- **Mac 端 launchd 未加载（M2-T2 deferred）**：v0.1 在 Mac vault 根目录手动 `git pull`（见下条命令）
+- **Task Scheduler 未运行**：检查任务是否启用、上次运行结果是否为 0
+- **Mac 用户**：本仓库不再提供 Mac 端同步脚本。如需在 Mac 上同步，请手动 `git pull`。
 
 ### F5: Bot 收到未授权消息
 
@@ -262,6 +267,129 @@ sudo systemctl restart pulse-bot
 | 队列文件在但 flush 不掉 | vault 状态错乱 | `sudo -u pulse-bot git -C /opt/pulse-bot/vault fsck` |
 | 队列文件丢失 | DLQ 是单独 JSONL 文件，重启会保留，不会丢 | 见 [[#f7-死信队列-dead-letter-queue-异常]] |
 
+### F8: NSSM 服务未运行
+
+**症状**：bot 不响应消息；`scripts\pulse-bot-service.ps1 -Status` 显示 `Stopped`。
+
+**排查路径**：
+
+```powershell
+# 1. 检查服务状态
+.\scripts\pulse-bot-service.ps1 -Status
+
+# 2. 查看服务日志
+Get-Content "$env:LOCALAPPDATA\PulseBot\bot-service.log" -Tail 20
+
+# 3. 尝试重启
+.\scripts\pulse-bot-service.ps1 -Restart
+
+# 4. 如果重启失败，手动启动看错误
+cd C:\Path\To\pulse-bot
+.venv\Scripts\python -m pulse_bot.bot
+```
+
+**常见根因**：
+
+| 错误 | 原因 | 修复 |
+|------|------|------|
+| `.env` 缺失或错误 | 环境变量未配置 | 编辑 `.env`，确认 `TELEGRAM_BOT_TOKEN` 和 `VAULT_REPO_DIR` 正确 |
+| NSSM 找不到 python.exe | `.venv` 路径不对 | 编辑 `pulse-bot-service.ps1` 中的 `$VENV_PYTHON` |
+| Vault 路径不存在 | `$VAULT_DIR` 指向了不存在的目录 | 确认 `$VAULT_DIR` 路径正确 |
+| Port 被占用 | 另一个实例已在运行 | `nssm stop PulseBot` 后重新注册 |
+| Token 无效 | BotFather 重新生成了 token | 更新 `.env` 中的 `TELEGRAM_BOT_TOKEN` |
+
+### F9: 桌面通知不弹出
+
+**症状**：同步冲突时没有 Toast 通知。
+
+**原因**：Task Scheduler 以非交互式会话运行时，无法向用户桌面弹出通知。这在以下场景下发生：
+- Task Scheduler 配置为「不管用户是否登录都要运行」
+- 任务以 `SYSTEM` 账号运行
+- 用户锁屏状态
+
+**解决**：这是预期行为。冲突仍以 CONFLICT 标记文件为依据：
+
+```powershell
+# 检查冲突标记
+.\scripts\pulse-pull.ps1 -Info
+# 输出 "Conflict marker: ⚠ YES" 表示有冲突
+
+# 查看冲突详情
+Get-Content "$env:LOCALAPPDATA\PulseBot\pulse-sync.CONFLICT"
+```
+
+通知仅作为辅助提醒，不应依赖它发现冲突。如果确实需要桌面通知：
+- 运行 `pulse-pull.ps1` 时保持用户登录状态
+- 确保 Task Scheduler 勾选了「允许与桌面交互」（Windows 10 部分版本可能不支持）
+
+### F10: Windows 端 Git 认证失败
+
+**症状**：同步日志显示 `ERROR: git pull` 或弹出 Git 认证提示框。
+
+**排查路径**：
+
+```powershell
+# 1. 检查 git 远程配置
+cd C:\Users\<你>\path\to\vault
+git remote -v
+
+# 2. 测试连接
+git fetch --dry-run
+```
+
+**解决**（三种方案，任选一种）：
+
+**方案 1：Git Credential Manager（推荐，自动处理）**
+
+Git for Windows 自带 Git Credential Manager（GCM），首次认证时自动弹出登录窗口。完成后自动保存凭据，后续无需重复输入。
+
+```powershell
+# 验证 GCM 已启用
+git config --global credential.helper
+# 输出应为：manager-core
+
+# 如果未启用：
+git config --global credential.helper manager-core
+```
+
+**方案 2：SSH key（推荐）**
+
+```powershell
+# 生成 SSH key
+ssh-keygen -t ed25519 -C "your-email@example.com"
+
+# 添加到 ssh-agent
+Get-Service -Name ssh-agent | Set-Service -StartupType Manual
+Start-Service ssh-agent
+ssh-add ~\.ssh\id_ed25519
+
+# 将公钥添加到 GitHub/GitLab
+Get-Content ~\.ssh\id_ed25519.pub | Set-Clipboard
+# → GitHub: Settings → SSH and GPG keys → New SSH key
+
+# 仓库改用 SSH URL
+git remote set-url origin git@github.com:<user>/my_obsidian.git
+```
+
+**方案 3：HTTPS + token（无需 SSH）**
+
+```powershell
+# 使用 GitHub personal access token
+git remote set-url origin https://<USERNAME>:<TOKEN>@github.com/<USER>/my_obsidian.git
+
+# 或使用 credential store 缓存
+git config --global credential.helper store
+# 注意：store 模式将密码明文存储在磁盘上，GCM 更安全
+```
+
+**验证**：
+
+```powershell
+# 无论哪种方案，最终验证
+git fetch --dry-run
+# 期望：无认证错误
+```
+
 ## 维护操作
 
 ### 重启服务
@@ -290,38 +418,34 @@ git pull
 
 参考 F5 流程。
 
-### Mac 端自动同步
+### Windows 端自动同步
 
-M2-T2 Mac launchd 方案 deferred（macOS `~/Downloads/` sandbox 路径限制）。v0.1 当前**不提供 Mac 脚本**，由用户自行选择：
+v0.1 的主力同步客户端从 Mac 迁移到 Windows。原 Mac launchd 方案因 macOS `~/Downloads/` sandbox 路径限制 deferred。
 
-**选项 A：手动 `git pull`（最稳）**
+**自动同步配置**（推荐）：
 
-```bash
-# 在 Mac（Vault 根目录）
-cd <your-vault-repo>
-git pull --rebase --autostash
+1. 按 [[setup-windows.md]] 配置 `pulse-pull.ps1`
+2. 运行 `. scripts/pulse-pull.ps1 -Install` 安装 Task Scheduler 任务
+3. 每 5 分钟自动执行 `git pull --rebase --autostash`
+
+**验证同步**：
+
+```powershell
+# 查看同步日志
+Get-Content "$env:LOCALAPPDATA\PulseBot\pulse-sync.log" -Tail 10
+
+# 检查 Task Scheduler 状态
+Get-ScheduledTask -TaskName PulseBotSync | Get-ScheduledTaskInfo
 ```
 
-想"接近实时"的话配一个 Apple Shortcut / Automator workflow 绑定到菜单栏，点击触发 `git pull`。
+**Windows 端看不到卡片时**：
 
-**选项 B：cron（无人值守）**
-
-```cron
-*/5 * * * * cd /Users/<你>/path/to/vault && git pull --rebase --autostash > /tmp/pulse-pull.log 2>&1
-```
-
-`crontab -e` 粘贴上面，把 `<你>` 和路径替换掉。每 5 分钟尝试一次 pull；如果 vault 有未 commit 改动，`git pull --rebase --autostash` 会自动 stash + rebase + apply。
-
-**选项 C：launchd（需要自己写 wrapper）**
-
-launchd 在 macOS sandbox 下无法直接 `cd` 到用户 Downloads 之类受限路径。可以写一个 wrapper 脚本（不在本仓库）放在 `~/Library/Application Support/PulseBot/` 下，配合 `com.user.pulse-pull.plist`。本仓库不提供模板，因为组合因人而异。
-
-**Mac 上看不到 Mac Cards 时**：
-
-1. 先手动 `git pull --rebase --autostash` 看是否本机网络/VPN 问题
+1. 先手动 `git pull --rebase --autostash` 看是否网络/VPN 问题
 2. 在 VPS 端 `cd /opt/pulse-bot/vault && git log --oneline -5` 看 push 是否真到了 remote
 3. 远程浏览器看 GitHub 仓库最近 commits
-4. 如果都 OK 但 Mac 没拿到 → 检查 cron/launchd 日志
+4. 如果都 OK 但 Windows 没拿到 → 检查 Task Scheduler 日志
+
+> **Mac 用户**：如需在 Mac 上同步，请手动 `git pull`。本仓库不再提供 Mac 端自动同步脚本。
 
 ### 备份策略
 

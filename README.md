@@ -44,8 +44,12 @@ The philosophy: **separate capture from organization**. Most note-taking systems
 
 **End-to-end SLA**:
 - Phone → VPS commit: < 5 s (via Telegram polling)
-- VPS → Mac: depends on sync method. **Windows**: ≤ 5 min via Task Scheduler + `pulse-pull.ps1`. **Mac**: instant if `git pull` is run manually; ≤ 5 min if set up via cron.
+- VPS → Windows client: ≤ 5 min via Task Scheduler + `pulse-pull.ps1` (primary sync method). **Mac**: manual `git pull` only (Mac is no longer the primary sync client — see [setup-windows.md](docs/setup-windows.md)).
 - Linux VPS → VPS itself: instant (commit + push on same machine).
+
+**Two deployment modes:**
+- **VPS + Windows**: Bot runs on VPS under systemd; Windows syncs via Task Scheduler every 5 min
+- **All-on-Windows**: Bot runs as NSSM service on Windows; vault updated in real-time (see [setup-windows.md](docs/setup-windows.md))
 
 ## Features
 
@@ -129,6 +133,7 @@ pulse-bot/
 │       └── Pulse-Dashboard.md  # Drop into vault at 91_System/Dashboards/
 ├── scripts/
 │   ├── pulse-pull.ps1           # Windows sync script (Task Scheduler)
+│   ├── pulse-bot-service.ps1    # Windows NSSM service manager
 │   └── pulse-pull-task.xml      # Windows Task Scheduler export
 └── docs/
     ├── setup.md             # VPS environment setup
