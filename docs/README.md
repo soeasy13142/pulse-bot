@@ -30,7 +30,7 @@ source: "docs/ 完整性审计 v0.1.1"
 读者：你作为开发者
 ├── architecture.md     ← 模块依赖 + 关键不变量
 ├── card-format.md      ← Pulse Card 文件长什么样
-└── dev/CONTRIBUTING.md ← 开发上手 + TDD + commit
+└── CONTRIBUTING.md ← 开发上手 + TDD + commit
 ```
 
 ## 读顺序建议
@@ -45,7 +45,7 @@ source: "docs/ 完整性审计 v0.1.1"
 - 路径/文件疑问 → `architecture.md` + `card-format.md`
 
 **参与开发**：
-- `dev/CONTRIBUTING.md` 一遍
+- `CONTRIBUTING.md` 一遍
 - 看 `tests/` 看现有测试模式
 - 改任何 `pulse_bot/*.py` → 必须 TDD + 调 `python-reviewer` agent review
 

@@ -18,8 +18,6 @@ param(
     [switch]$Info
 )
 
-Add-Type -AssemblyName System.Windows.Forms
-
 $ENABLE_TOAST = $true  # Set to $false to disable desktop notifications
 
 $VAULT_DIR = "$env:USERPROFILE\my_obsidian"
@@ -107,14 +105,8 @@ function Invoke-Diagnose {
 
     # 4. NSSM service status
     Write-Host "`n[4/6] NSSM service..."
-    try {
-        $nssmCheck = Get-Command nssm -ErrorAction Stop
-        $svcStatus = & nssm status PulseBot 2>&1
-        Write-Host "  ✅ NSSM found: $($nssmCheck.Source)"
-        Write-Host "  PulseBot service: $svcStatus"
-    } catch {
-        Write-Host "  ⚠ NSSM not installed (ok if sync-only mode)"
-    }
+    try { $null = Get-Command nssm -ErrorAction Stop } catch { Write-Host "  ⚠ NSSM not installed (ok if sync-only mode)"; return }
+    try { $svcStatus = & nssm status PulseBot 2>&1; Write-Host "  ✅ PulseBot service: $svcStatus" } catch { Write-Host "  ❌ NSSM service check failed: $_" }
 
     # 5. Sync logs
     Write-Host "`n[5/6] Recent sync log..."
@@ -165,7 +157,7 @@ function Show-Info {
         if ($svc) {
             Write-Host "Bot service: $($svc.Status)"
         }
-    } catch {}
+    } catch { Write-Warning "Could not check NSSM service: $_" }
 }
 
 # Install/uninstall mode
@@ -216,6 +208,7 @@ try {
 
         # Desktop notification (non-blocking)
         if ($ENABLE_TOAST) {
+            Add-Type -AssemblyName System.Windows.Forms
             $notification = New-Object System.Windows.Forms.NotifyIcon
             $notification.Icon = [System.Drawing.SystemIcons]::Warning
             $notification.BalloonTipTitle = "Pulse Bot Sync"

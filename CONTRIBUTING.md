@@ -160,7 +160,7 @@ Review pulse_bot/git_sync.py (commit abc1234).
 | 旧符号 / 旧行为 | 新符号 / 新行为 | 原因 | commit |
 |---|---|---|---|
 | `pulse_bot.bot._dead_letter`（模块级 DeadLetterQueue singleton） | `pulse_bot.bot._get_dead_letter(config) -> DeadLetterQueue`（每次调用从 config 拿路径） | 测试隔离 + 允许多部署覆盖 `dead_letter_path` | `2d5287f` (2026-07-11) |
-| 用户回执 `bash pulse-pull.sh` | `git pull --rebase --autostash` | `pulse-pull.sh` 在 v0.1 没实现（Mac launchd deferred） | `2d5287f` (2026-07-11) |
+| 用户回执 `bash pulse-pull.sh` | `git pull --rebase --autostash` | Mac launchd 方案因 macOS sandbox 限制 deferred；v0.1 改用 Windows Task Scheduler + `pulse-pull.ps1` 为主力同步方案 | `2d5287f` (2026-07-11) |
 
 **测试时**不要 monkeypatch `_dead_letter`（已删），改成 monkeypatch `_get_dead_letter` 返回一个 fake：
 

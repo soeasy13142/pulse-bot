@@ -45,7 +45,7 @@
 
 **端到端 SLA**：
 - 手机 → VPS commit：< 5 秒（通过 Telegram polling）
-- VPS → Mac：取决于同步方式。**Windows**：通过 Task Scheduler + `pulse-pull.ps1` 周期 ≤ 5 分钟。**Mac**：手动 `git pull` 即时；通过 cron 时 ≤ 5 分钟。
+- VPS → Windows 客户端：通过 Task Scheduler + `pulse-pull.ps1` 周期 ≤ 5 分钟（主力同步方案）。**Mac**：仅手动 `git pull`（Mac 不再是主力同步客户端，详见 [setup-windows.md](docs/setup-windows.md)）。
 - Linux VPS 同机：即时（commit + push 同一台机器）。
 
 ## 功能特性

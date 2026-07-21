@@ -95,7 +95,7 @@ Get-Content "$env:LOCALAPPDATA\PulseBot\pulse-sync.log" -Tail 10
 ```powershell
 cd C:\Path\To\pulse-bot
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements-windows.txt
 ```
 
 ### B2. 配置环境变量

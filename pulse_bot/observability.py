@@ -9,9 +9,9 @@ from typing import Optional
 
 try:
     import sdnotify
-    _HAS_SDNOTIFY = True
+    _HAS_SDNOTIFY: bool = True
 except ImportError:
-    _HAS_SDNOTIFY = False
+    _HAS_SDNOTIFY: bool = False
 
 
 def setup_logging(level: str = "INFO", fmt: str = "json") -> None:

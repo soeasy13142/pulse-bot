@@ -36,3 +36,6 @@ Thumbs.db
 
 # Auto-generated Claude Code agent worktrees (temporary isolated copies)
 .claude/worktrees/
+
+# Agent working files (SDD briefs, reports, etc.)
+.superpowers/

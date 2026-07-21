@@ -108,15 +108,15 @@ function Install-Service {
 
     # nssm install
     if (-not (Invoke-Nssm -Arguments @('install', $SERVICE_NAME, $VENV_PYTHON, '-m pulse_bot.bot'))) { return }
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppDirectory', $BOT_DIR)
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStdout', $logFile)
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStderr', $logFile)
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateFiles', '1')
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateSeconds', '86400')
-    $null = Invoke-Nssm -Arguments (@('set', $SERVICE_NAME, 'AppEnvironmentExtra') + $ENV_VARS)
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppDirectory', $BOT_DIR))) { return }
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStdout', $logFile))) { return }
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStderr', $logFile))) { return }
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateFiles', '1'))) { return }
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateSeconds', '86400'))) { return }
+    if (-not (Invoke-Nssm -Arguments (@('set', $SERVICE_NAME, 'AppEnvironmentExtra') + $ENV_VARS))) { return }
 
     # Auto-restart on crash (Exit code != 0)
-    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppExit', 'Default', 'Restart')
+    if (-not (Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppExit', 'Default', 'Restart'))) { return }
 
     Write-Status "Service '$SERVICE_NAME' installed. Run -Start to begin." "OK"
 }
@@ -160,7 +160,7 @@ function Show-Status {
         Write-Host ""
 
         # Show process info from NSSM
-        $nssmStatus = & nssm status $SERVICE_NAME 2>&1
+        $nssmStatus = Invoke-Nssm -Arguments @('status', $SERVICE_NAME)
         Write-Host "NSSM status: $nssmStatus"
 
         # Show log file
