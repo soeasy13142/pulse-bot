@@ -55,6 +55,16 @@ function Test-NssmAvailable {
     }
 }
 
+function Invoke-Nssm {
+    param([string[]]$Arguments)
+    & nssm $Arguments 2>&1
+    if (-not $?) {
+        Write-Status "nssm command failed: nssm $($Arguments -join ' ')" "ERROR"
+        return $false
+    }
+    return $true
+}
+
 function Get-ServiceStatus {
     $svc = Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue
     if ($svc) {
@@ -97,47 +107,47 @@ function Install-Service {
     Write-Status "Installing NSSM service '$SERVICE_NAME'..."
 
     # nssm install
-    & nssm install $SERVICE_NAME $VENV_PYTHON "-m pulse_bot.bot"
-    & nssm set $SERVICE_NAME AppDirectory $BOT_DIR
-    & nssm set $SERVICE_NAME AppStdout $logFile
-    & nssm set $SERVICE_NAME AppStderr $logFile
-    & nssm set $SERVICE_NAME AppRotateFiles 1
-    & nssm set $SERVICE_NAME AppRotateSeconds 86400
-    & nssm set $SERVICE_NAME AppEnvironmentExtra $ENV_VARS
+    if (-not (Invoke-Nssm -Arguments @('install', $SERVICE_NAME, $VENV_PYTHON, '-m pulse_bot.bot'))) { return }
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppDirectory', $BOT_DIR)
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStdout', $logFile)
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppStderr', $logFile)
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateFiles', '1')
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppRotateSeconds', '86400')
+    $null = Invoke-Nssm -Arguments (@('set', $SERVICE_NAME, 'AppEnvironmentExtra') + $ENV_VARS)
 
     # Auto-restart on crash (Exit code != 0)
-    & nssm set $SERVICE_NAME AppExit Default Restart
+    $null = Invoke-Nssm -Arguments @('set', $SERVICE_NAME, 'AppExit', 'Default', 'Restart')
 
     Write-Status "Service '$SERVICE_NAME' installed. Run -Start to begin." "OK"
 }
 
-function Start-Service {
+function Start-PulseBotService {
     if (-not (Test-NssmAvailable)) { return }
     if (Get-ServiceStatus) {
         Write-Status "Starting '$SERVICE_NAME'..."
-        & nssm start $SERVICE_NAME
+        $null = Invoke-Nssm -Arguments @('start', $SERVICE_NAME)
         Write-Status "Service '$SERVICE_NAME' started." "OK"
     } else {
         Write-Status "Service '$SERVICE_NAME' not installed. Run -Install first." "ERROR"
     }
 }
 
-function Stop-Service {
+function Stop-PulseBotService {
     if (-not (Test-NssmAvailable)) { return }
     $status = Get-ServiceStatus
     if ($status) {
         Write-Status "Stopping '$SERVICE_NAME'..."
-        & nssm stop $SERVICE_NAME
+        $null = Invoke-Nssm -Arguments @('stop', $SERVICE_NAME)
         Write-Status "Service '$SERVICE_NAME' stopped." "OK"
     } else {
         Write-Status "Service '$SERVICE_NAME' not installed." "WARN"
     }
 }
 
-function Restart-Service {
-    Stop-Service
+function Restart-PulseBotService {
+    Stop-PulseBotService
     Start-Sleep -Seconds 2
-    Start-Service
+    Start-PulseBotService
 }
 
 function Show-Status {
@@ -169,19 +179,19 @@ function Uninstall-Service {
     $status = Get-ServiceStatus
     if ($status) {
         Write-Status "Stopping '$SERVICE_NAME'..."
-        & nssm stop $SERVICE_NAME
+        $null = Invoke-Nssm -Arguments @('stop', $SERVICE_NAME)
         Start-Sleep -Seconds 2
     }
     Write-Status "Removing '$SERVICE_NAME'..."
-    & nssm remove $SERVICE_NAME confirm
+    $null = Invoke-Nssm -Arguments @('remove', $SERVICE_NAME, 'confirm')
     Write-Status "Service '$SERVICE_NAME' removed." "OK"
 }
 
 # --- Dispatch ---
 if ($Install) { Install-Service; return }
-if ($Start) { Start-Service; return }
-if ($Stop) { Stop-Service; return }
-if ($Restart) { Restart-Service; return }
+if ($Start) { Start-PulseBotService; return }
+if ($Stop) { Stop-PulseBotService; return }
+if ($Restart) { Restart-PulseBotService; return }
 if ($Status) { Show-Status; return }
 if ($Uninstall) { Uninstall-Service; return }
 
